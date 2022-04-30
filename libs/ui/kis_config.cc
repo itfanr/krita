@@ -116,16 +116,6 @@ void KisConfig::setDisableTouchOnCanvas(bool value) const
     m_cfg.writeEntry("disableTouchOnCanvas", value);
 }
 
-bool KisConfig::disableTouchRotation(bool defaultValue) const
-{
-    return (defaultValue ? false : m_cfg.readEntry("disableTouchRotation", false));
-}
-
-void KisConfig::setDisableTouchRotation(bool value) const
-{
-    m_cfg.writeEntry("disableTouchRotation", value);
-}
-
 bool KisConfig::useProjections(bool defaultValue) const
 {
     return (defaultValue ? true : m_cfg.readEntry("useProjections", true));
@@ -410,6 +400,22 @@ void KisConfig::setNewOutlineStyle(OutlineStyle style)
     m_cfg.writeEntry("newOutlineStyle", (int)style);
 }
 
+OutlineStyle KisConfig::lastUsedOutlineStyle(bool defaultValue) const
+{
+    if (defaultValue) {
+        return OUTLINE_NONE;
+    }
+
+    int style = m_cfg.readEntry("lastUsedOutlineStyle", int(-1));
+
+    return (OutlineStyle) style;
+}
+
+void KisConfig::setLastUsedOutlineStyle(OutlineStyle style)
+{
+    m_cfg.writeEntry("lastUsedOutlineStyle", (int)style);
+}
+
 QRect KisConfig::colorPreviewRect() const
 {
     return m_cfg.readEntry("colorPreviewRect", QVariant(QRect(32, 32, 48, 48))).toRect();
@@ -688,6 +694,15 @@ void KisConfig::setPasteBehaviour(qint32 renderIntent) const
     m_cfg.writeEntry("pasteBehaviour", renderIntent);
 }
 
+qint32 KisConfig::pasteFormat(bool defaultValue) const
+{
+    return defaultValue ? 0 : m_cfg.readEntry("pasteFormat", 0);
+}
+
+void KisConfig::setPasteFormat(qint32 format)
+{
+    m_cfg.writeEntry("pasteFormat", format);
+}
 
 qint32 KisConfig::monitorRenderIntent(bool defaultValue) const
 {
@@ -1876,6 +1891,15 @@ void KisConfig::setTrimKra(bool trim)
     m_cfg.writeEntry("TrimKra", trim);
 }
 
+bool KisConfig::trimFramesImport(bool defaultValue) const
+{
+    return (defaultValue ? false : m_cfg.readEntry("TrimFramesImport", false));
+}
+void KisConfig::setTrimFramesImport(bool trim)
+{
+    m_cfg.writeEntry("TrimFramesImport", trim);
+}
+
 bool KisConfig::toolOptionsInDocker(bool defaultValue) const
 {
     return (defaultValue ? true : m_cfg.readEntry("ToolOptionsInDocker", true));
@@ -1940,6 +1964,16 @@ bool KisConfig::smoothZooming(bool defaultValue) const
 void KisConfig::setSmoothZooming(bool scale)
 {
     m_cfg.writeEntry("SmoothZooming", scale);
+}
+
+int KisConfig::zoomMarginSize(int defaultValue) const
+{
+    return (defaultValue ? 0 : m_cfg.readEntry("zoomMarginSize", 0));
+}
+
+void KisConfig::setZoomMarginSize(int zoomMarginSize)
+{
+    m_cfg.writeEntry("zoomMarginSize", zoomMarginSize);
 }
 
 const KoColorSpace* KisConfig::customColorSelectorColorSpace(bool defaultValue) const

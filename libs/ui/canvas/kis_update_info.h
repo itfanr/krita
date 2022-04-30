@@ -44,8 +44,8 @@ struct ConversionOptions {
     }
 
 
-    bool m_needsConversion;
-    const KoColorSpace *m_destinationColorSpace = 0;
+    bool m_needsConversion {false};
+    const KoColorSpace *m_destinationColorSpace {0};
     KoColorConversionTransformation::Intent m_renderingIntent;
     KoColorConversionTransformation::ConversionFlags m_conversionFlags;
 };
@@ -53,7 +53,7 @@ struct ConversionOptions {
 class KisOpenGLUpdateInfo;
 typedef KisSharedPtr<KisOpenGLUpdateInfo> KisOpenGLUpdateInfoSP;
 
-class KisOpenGLUpdateInfo : public KisUpdateInfo
+class KRITAUI_EXPORT KisOpenGLUpdateInfo : public KisUpdateInfo
 {
 public:
     KisOpenGLUpdateInfo();

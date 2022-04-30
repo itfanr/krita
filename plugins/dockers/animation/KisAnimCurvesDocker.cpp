@@ -48,6 +48,7 @@
 #include "kis_signals_blocker.h"
 #include "kis_time_span.h"
 #include "kis_processing_applicator.h"
+#include "KisMainWindow.h"
 #include <QItemSelection>
 
 KisAnimCurvesDockerTitlebar::KisAnimCurvesDockerTitlebar(QWidget* parent) :
@@ -224,9 +225,13 @@ struct KisAnimCurvesDocker::Private
     Private(QWidget *parent)
         : titlebar(new KisAnimCurvesDockerTitlebar(parent))
         , curvesModel(new KisAnimCurvesModel(parent))
+        , curvesView(new KisAnimCurvesView(parent))
+        , channelTreeModel(new KisAnimCurvesChannelsModel(curvesModel, parent))
+        , channelTreeView(new QTreeView(parent))
+        , channelTreeMenuChannels(new QMenu(parent))
+        , channelTreeMenuLayers(new QMenu(parent))
         , mainWindow(nullptr)
     {
-        channelTreeModel = new KisAnimCurvesChannelsModel(curvesModel, parent);
     }
 
     KisAnimCurvesDockerTitlebar *titlebar;
@@ -257,7 +262,6 @@ KisAnimCurvesDocker::KisAnimCurvesDocker()
     mainWidget->layout()->addWidget(mainSplitter);
 
     {   // Channel Tree..
-        m_d->channelTreeView = new QTreeView(this);
         m_d->channelTreeView->setModel(m_d->channelTreeModel);
         m_d->channelTreeView->setHeaderHidden(true);
         KisAnimCurvesChannelDelegate *listDelegate = new KisAnimCurvesChannelDelegate(this);
@@ -267,9 +271,7 @@ KisAnimCurvesDocker::KisAnimCurvesDocker()
         m_d->channelTreeView->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(m_d->channelTreeView, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(requestChannelMenuAt(QPoint)));
 
-        m_d->channelTreeMenuChannels = new QMenu(this);
         m_d->channelTreeMenuChannels->addSection(i18n("Channel Operations"));
-        m_d->channelTreeMenuLayers = new QMenu(this);
         m_d->channelTreeMenuLayers->addSection(i18n("Layer Operations"));
 
         { //Channels Menu
@@ -286,7 +288,6 @@ KisAnimCurvesDocker::KisAnimCurvesDocker()
     }
 
     {   // Curves View..
-        m_d->curvesView = new KisAnimCurvesView(this);
         m_d->curvesView->setModel(m_d->curvesModel);
     }
 
@@ -347,6 +348,7 @@ void KisAnimCurvesDocker::setCanvas(KoCanvasBase *canvas)
         m_d->channelTreeModel->selectedNodesChanged(KisNodeList());
         m_d->canvas->animationPlayer()->disconnect(this);
         m_d->titlebar->transport->disconnect(m_d->canvas->animationPlayer());
+        m_d->titlebar->transport->setPlaying(false);
         m_d->titlebar->sbFrameRegister->disconnect(m_d->canvas->animationPlayer());
         m_d->titlebar->sbSpeed->disconnect(m_d->canvas->animationPlayer());
 
@@ -356,6 +358,8 @@ void KisAnimCurvesDocker::setCanvas(KoCanvasBase *canvas)
             m_d->titlebar->sbEndFrame->disconnect(m_d->canvas->image()->animationInterface());
             m_d->titlebar->sbFrameRate->disconnect(m_d->canvas->image()->animationInterface());
         }
+
+        m_d->curvesModel->setImage(0);
     }
 
     m_d->canvas = dynamic_cast<KisCanvas2*>(canvas);
@@ -404,6 +408,7 @@ void KisAnimCurvesDocker::setCanvas(KoCanvasBase *canvas)
                                                       activeIndex.data(KisAnimCurvesModel::ScalarValueRole).toReal() : 0.0f);
         }
 
+        m_d->titlebar->transport->setPlaying(m_d->canvas->animationPlayer()->isPlaying());
         connect(m_d->titlebar->transport, SIGNAL(skipBack()), m_d->canvas->animationPlayer(), SLOT(previousKeyframe()));
         connect(m_d->titlebar->transport, SIGNAL(back()), m_d->canvas->animationPlayer(), SLOT(previousFrame()));
         connect(m_d->titlebar->transport, SIGNAL(stop()), m_d->canvas->animationPlayer(), SLOT(stop()));

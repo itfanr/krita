@@ -152,7 +152,6 @@ struct KisBrush::Private {
           spacing(rhs.spacing),
           hotSpot(rhs.hotSpot),
           hasColor(rhs.hasColor),
-          preserveLightness(rhs.preserveLightness),
           angle(rhs.angle),
           scale(rhs.scale),
           autoSpacingActive(rhs.autoSpacingActive),
@@ -184,7 +183,6 @@ struct KisBrush::Private {
     double spacing;
     QPointF hotSpot;
     bool hasColor;
-    bool preserveLightness;
     qreal angle;
     qreal scale;
 
@@ -522,16 +520,6 @@ void KisBrush::prepareForSeqNo(const KisPaintInformation &info, int seqNo)
     Q_UNUSED(seqNo);
 }
 
-void KisBrush::setThreadingAllowed(bool value)
-{
-    d->threadingAllowed = value;
-}
-
-bool KisBrush::threadingAllowed() const
-{
-    return d->threadingAllowed;
-}
-
 void KisBrush::clearBrushPyramid()
 {
     d->brushPyramid.reset();
@@ -726,8 +714,10 @@ qreal KisBrush::angle() const
     return d->angle;
 }
 
-QPainterPath KisBrush::outline() const
+QPainterPath KisBrush::outline(bool forcePreciseOutline) const
 {
+    Q_UNUSED(forcePreciseOutline);
+
     return *d->brushOutline.value(this);
 }
 

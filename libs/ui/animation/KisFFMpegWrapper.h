@@ -35,6 +35,11 @@ struct KRITAUI_EXPORT KisFFMpegWrapperSettings
 
 };
 
+enum FFProbeErrorCodes {
+    NONE = 0,
+    UNSUPPORTED_CODEC,
+    INVALID_JSON
+};
 
 const int FFMPEG_TIMEOUT = 600000;
 
@@ -82,6 +87,13 @@ private Q_SLOTS:
 private:
     void updateProgressDialog(int progressValue);
 
+    /**
+     * @brief ffprobeCheckStreamsValid
+     * @param ffprobeJsonObj JsonObject resulting from ffprobe proces.
+     * @param ffprobeSTDERR STDERR output from ffprobe.
+     * @return bool -> Whether we support a video format based on it's internal streams.
+     */
+    bool ffprobeCheckStreamsValid(const QJsonObject& ffprobeJsonObj, const QString& ffprobeSTDERR);
     
 private:
     QScopedPointer<QProcess> m_process;

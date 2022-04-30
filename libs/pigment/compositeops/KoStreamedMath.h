@@ -472,6 +472,50 @@ template<bool useMask, bool useFlow, class Compositor>
 };
 
 template<typename channels_type, Vc::Implementation _impl>
+struct PixelStateRecoverHelper {
+    ALWAYS_INLINE
+    PixelStateRecoverHelper(const Vc::float_v &c1, const Vc::float_v &c2, const Vc::float_v &c3)
+    {
+        Q_UNUSED(c1);
+        Q_UNUSED(c2);
+        Q_UNUSED(c3);
+    }
+
+    ALWAYS_INLINE
+    void recoverPixels(const Vc::float_m &mask, Vc::float_v &c1, Vc::float_v &c2, Vc::float_v &c3) const {
+        Q_UNUSED(mask);
+        Q_UNUSED(c1);
+        Q_UNUSED(c2);
+        Q_UNUSED(c3);
+    }
+};
+
+template<Vc::Implementation _impl>
+struct PixelStateRecoverHelper<float, _impl> {
+    ALWAYS_INLINE
+    PixelStateRecoverHelper(const Vc::float_v &c1, const Vc::float_v &c2, const Vc::float_v &c3)
+        : m_orig_c1(c1),
+          m_orig_c2(c2),
+          m_orig_c3(c3)
+    {
+    }
+
+    ALWAYS_INLINE
+    void recoverPixels(const Vc::float_m &mask, Vc::float_v &c1, Vc::float_v &c2, Vc::float_v &c3) const {
+        if (!mask.isEmpty()) {
+            c1(mask) = m_orig_c1;
+            c2(mask) = m_orig_c2;
+            c3(mask) = m_orig_c3;
+        }
+    }
+
+private:
+    const Vc::float_v m_orig_c1;
+    const Vc::float_v m_orig_c2;
+    const Vc::float_v m_orig_c3;
+};
+
+template<typename channels_type, Vc::Implementation _impl>
 struct PixelWrapper
 {
 };
@@ -483,8 +527,9 @@ struct PixelWrapper<quint16, _impl>
     using uint_v = Vc::SimdArray<unsigned int, Vc::float_v::size()>;
 
     ALWAYS_INLINE
-    static quint16 lerpMixedUintFloat(quint16 a, quint16 b, float alpha) {
-        return OptiRound<_impl>::roundScalar(qint32(b - a) * alpha + a);
+    static quint16 lerpMixedUintFloat(quint16 a, quint16 b, float alpha)
+    {
+        return OptiRound<_impl>::roundScalar((float(b) - a) * alpha + float(a));
     }
 
     ALWAYS_INLINE

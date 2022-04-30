@@ -23,6 +23,7 @@
 #include "kis_transform_utils.h"
 #include "kis_abstract_projection_plane.h"
 #include "kis_recalculate_transform_mask_job.h"
+#include "kis_lod_transform.h"
 
 #include "kis_projection_leaf.h"
 #include "kis_modify_transform_mask_command.h"
@@ -296,6 +297,19 @@ void TransformStrokeStrategy::doStrokeCallback(KisStrokeJobData *data)
             } else if (KisTransformMask *transformMask =
                        dynamic_cast<KisTransformMask*>(td->node.data())) {
 
+                { // Set Keyframe Data.
+                    ToolTransformArgs unscaled = ToolTransformArgs(td->config);
+
+                    if (td->levelOfDetailOverride() > 0) {
+                        unscaled.scale3dSrcAndDst(KisLodTransform::lodToInvScale(td->levelOfDetailOverride()));
+                    }
+
+                    KUndo2CommandSP cmd( new KisSetTransformMaskKeyframesCommand(transformMask,
+                                                                  KisTransformMaskParamsInterfaceSP(
+                                                                        new KisTransformMaskAdapter(unscaled))) );
+                    runAndSaveCommand(cmd, KisStrokeJobData::BARRIER, KisStrokeJobData::NORMAL);
+                }
+
                 runAndSaveCommand(KUndo2CommandSP(
                                       new KisModifyTransformMaskCommand(transformMask,
                                                                      KisTransformMaskParamsInterfaceSP(
@@ -403,6 +417,15 @@ void TransformStrokeStrategy::initStrokeCallback()
 
     m_rootNode = KisTransformUtils::tryOverrideRootToTransformMask(m_rootNode);
 
+    if (m_rootNode->inherits("KisTransformMask") && m_rootNode->projectionLeaf()->isDroppedNode()) {
+        m_rootNode.clear();
+        m_processedNodes.clear();
+
+        TransformTransactionProperties transaction(QRect(), &m_initialTransformArgs, m_rootNode, m_processedNodes);
+        Q_EMIT sigTransactionGenerated(transaction, m_initialTransformArgs, this);
+        return;
+    }
+
     ToolTransformArgs initialTransformArgs;
     bool isExternalSourcePresent = false;
     m_processedNodes = KisTransformUtils::fetchNodesList(m_mode, m_rootNode, isExternalSourcePresent);
@@ -427,6 +450,16 @@ void TransformStrokeStrategy::initStrokeCallback()
     extraInitJobs << new Data(new KisHoldUIUpdatesCommand(m_updatesFacade, KisCommandUtils::FlipFlopCommand::INITIALIZING), false, KisStrokeJobData::BARRIER);
 
     extraInitJobs << lastCommandUndoJobs;
+
+    KritaUtils::addJobSequential(extraInitJobs, [this]() {
+        // When dealing with animated transform mask layers, create keyframe and save the command for undo.
+        Q_FOREACH (KisNodeSP node, m_processedNodes) {
+            if (KisTransformMask* transformMask = dynamic_cast<KisTransformMask*>(node.data())) {
+                QSharedPointer<KisInitializeTransformMaskKeyframesCommand> addKeyCommand(new KisInitializeTransformMaskKeyframesCommand(transformMask, transformMask->transformParams()));
+                runAndSaveCommand( addKeyCommand, KisStrokeJobData::CONCURRENT, KisStrokeJobData::NORMAL);
+            }
+        }
+    });
 
     KritaUtils::addJobSequential(extraInitJobs, [this]() {
         /**

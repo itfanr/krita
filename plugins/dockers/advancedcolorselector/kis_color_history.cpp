@@ -12,12 +12,22 @@
 
 #include <KoCompositeOpRegistry.h>
 
+#include <QToolButton>
 #include <QColor>
+#include <QList>
+#include <kis_icon.h>
 
 KisColorHistory::KisColorHistory(QWidget *parent)
     : KisColorPatches("lastUsedColors", parent)
     , m_resourceProvider(0)
 {
+    m_clearButton = new QToolButton(this);
+    m_clearButton->setIcon(KisIconUtils::loadIcon("dialog-cancel-16"));
+    m_clearButton->setToolTip(i18n("Clear all color history"));
+    m_clearButton->setAutoRaise(true);
+    connect(m_clearButton, SIGNAL(clicked()), this, SLOT(clearColorHistory()));
+
+    setAdditionalButtons({m_clearButton});
 }
 
 void KisColorHistory::unsetCanvas()

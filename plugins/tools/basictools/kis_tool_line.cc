@@ -271,6 +271,12 @@ void KisToolLine::endPrimaryAction(KoPointerEvent *event)
     endStroke();
 }
 
+bool KisToolLine::primaryActionSupportsHiResEvents() const
+{
+    return true;
+}
+
+
 void KisToolLine::endStroke()
 {
     NodePaintAbility nodeAbility = nodePaintAbility();
@@ -300,7 +306,7 @@ void KisToolLine::endStroke()
         KoShapeStrokeSP border(new KoShapeStroke(currentStrokeWidth(), currentFgColor().toQColor()));
         path->setStroke(border);
 
-        KUndo2Command * cmd = canvas()->shapeController()->addShape(path, 0);
+        KUndo2Command * cmd = canvas()->shapeController()->addShape(path, nullptr);
         canvas()->addCommand(cmd);
     }
 

@@ -328,6 +328,7 @@ bool KisInputManager::eventFilterImpl(QEvent * event)
             deregisterPopupWidget();
 
             if (wasVisible) {
+                d->popupWasActive = true;
                 event->setAccepted(true);
                 return true; // Event consumed.
             }
@@ -620,33 +621,28 @@ bool KisInputManager::eventFilterImpl(QEvent * event)
     case QEvent::TouchBegin:
     {
         d->debugEvent<QTouchEvent, false>(event);
+        // The popup was dismissed in previous TouchBegin->TouchEnd sequence. We now have a new TouchBegin.
+        d->popupWasActive = false;
         if (startTouch(retval)) {
-            QTouchEvent *touchEvent = static_cast<QTouchEvent *> (event);
+            QTouchEvent *touchEvent = static_cast<QTouchEvent *>(event);
             KisAbstractInputAction::setInputManager(this);
-
-            if (!KisConfig(true).disableTouchOnCanvas()
-                && touchEvent->touchPoints().count() == 1)
-            {
-                d->previousPos = touchEvent->touchPoints().at(0).pos();
-                // we don't want to lose this event
-                KoPointerEvent::copyQtPointerEvent(touchEvent, d->originatingTouchBeginEvent);
-                d->buttonPressed = false;
-                d->resetCompressor();
-            }
-            else {
-                retval = d->matcher.touchBeginEvent(touchEvent);
-            }
+            d->previousPos = touchEvent->touchPoints().at(0).pos();
+            // we don't want to lose this event
+            KoPointerEvent::copyQtPointerEvent(touchEvent, d->originatingTouchBeginEvent);
+            retval = d->matcher.touchBeginEvent(touchEvent);
+            d->buttonPressed = false;
+            d->resetCompressor();
             event->accept();
+            break;
         }
-
-        // if the event isn't handled, Qt starts to send MouseEvents
-        if (!KisConfig(true).disableTouchOnCanvas())
-            retval = true;
-        break;
     }
 
     case QEvent::TouchUpdate:
     {
+        if (d->popupWasActive) {
+            event->setAccepted(true);
+            return true;
+        }
         QTouchEvent *touchEvent = static_cast<QTouchEvent*>(event);
         d->debugEvent<QTouchEvent, false>(event);
 
@@ -687,9 +683,12 @@ bool KisInputManager::eventFilterImpl(QEvent * event)
             }
             else if (!d->touchStrokeStarted){
                 KisAbstractInputAction::setInputManager(this);
-
-                retval = d->matcher.touchUpdateEvent(touchEvent);
-                d->touchHasBlockedPressEvents = retval;
+                if (d->touchHasBlockedPressEvents) {
+                    retval = compressMoveEventCommon(touchEvent);
+                } else {
+                    retval = d->matcher.touchUpdateEvent(touchEvent);
+                    d->touchHasBlockedPressEvents = retval;
+                }
             }
 #ifdef Q_OS_MACOS
         }
@@ -704,16 +703,20 @@ bool KisInputManager::eventFilterImpl(QEvent * event)
 
     case QEvent::TouchEnd:
     {
+        if (d->popupWasActive) {
+            event->setAccepted(true);
+            return true;
+        }
         d->debugEvent<QTouchEvent, false>(event);
         endTouch();
         QTouchEvent *touchEvent = static_cast<QTouchEvent*>(event);
         retval = d->matcher.touchEndEvent(touchEvent);
-        if (d->touchStrokeStarted)
-        {
+        if (d->touchStrokeStarted) {
             retval = d->matcher.buttonReleased(Qt::LeftButton, touchEvent);
-
             d->previousPos = {0, 0};
             d->touchStrokeStarted = false; // stroke ended
+        } else {
+            d->matcher.touchResetStateForPointerEvents();
         }
 
         // if the event isn't handled, Qt starts to send MouseEvents
@@ -725,9 +728,14 @@ bool KisInputManager::eventFilterImpl(QEvent * event)
     }
     case QEvent::TouchCancel:
     {
+        if (d->popupWasActive) {
+            event->setAccepted(true);
+            return true;
+        }
         d->debugEvent<QTouchEvent, false>(event);
         endTouch();
-        d->matcher.touchCancelEvent(d->previousPos);
+        QTouchEvent *touchEvent = static_cast<QTouchEvent*>(event);
+        d->matcher.touchCancelEvent(touchEvent, d->previousPos);
         // reset state
         d->previousPos = {0, 0};
         d->touchStrokeStarted = false;
@@ -837,6 +845,8 @@ void KisInputManager::slotToolChanged()
             d->forwardAllEventsToTool = false;
             d->matcher.suppressAllActions(false);
         }
+
+        d->matcher.toolHasBeenActivated();
     }
 }
 

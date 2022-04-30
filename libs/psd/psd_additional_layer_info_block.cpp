@@ -18,8 +18,10 @@
 #include <asl/kis_asl_writer.h>
 #include <asl/kis_asl_writer_utils.h>
 
+
 PsdAdditionalLayerInfoBlock::PsdAdditionalLayerInfoBlock(const PSDHeader &header)
     : m_header(header)
+    , sectionDividerType(psd_other)
 {
 }
 
@@ -63,10 +65,17 @@ void PsdAdditionalLayerInfoBlock::readImpl(QIODevice &io)
     if (m_header.version > 1) {
         longBlocks << "LMsk"
                    << "Lr16"
+                   << "Lr32"
                    << "Layr"
                    << "Mt16"
+                   << "Mt32"
                    << "Mtrn"
-                   << "Alph";
+                   << "Alph"
+                   << "FMsk"
+                   << "lnk2"
+                   << "FEid"
+                   << "FXid"
+                   << "PxSD";
     }
 
     while (!io.atEnd()) {
@@ -102,6 +111,9 @@ void PsdAdditionalLayerInfoBlock::readImpl(QIODevice &io)
 
         dbgFile << "info block size" << blockSize << "(" << io.pos() << ")";
 
+        if (blockSize == 0)
+            return;
+
         // offset verifier will correct the position on the exit from
         // current namespace, including 'continue', 'return' and
         // exceptions.
@@ -129,8 +141,17 @@ void PsdAdditionalLayerInfoBlock::readImpl(QIODevice &io)
                 m_layerInfoBlockHandler(io);
             }
         } else if (key == "SoCo") {
+            // Solid Color
+            fillConfig = KisAslReader::readFillLayer(io, byteOrder);
+            fillType = psd_fill_solid_color;
         } else if (key == "GdFl") {
+            // Gradient Fill
+            fillConfig = KisAslReader::readFillLayer(io, byteOrder);
+            fillType = psd_fill_gradient;
         } else if (key == "PtFl") {
+            // Pattern Fill
+            fillConfig = KisAslReader::readFillLayer(io, byteOrder);
+            fillType = psd_fill_pattern;
         } else if (key == "brit") {
         } else if (key == "levl") {
         } else if (key == "curv") {
@@ -153,11 +174,11 @@ void PsdAdditionalLayerInfoBlock::readImpl(QIODevice &io)
         } else if (key == "luni") {
             // get the unicode layer name
             unicodeLayerName = readUnicodeString<byteOrder>(io);
-            dbgFile << "unicodeLayerName" << unicodeLayerName;
+            dbgFile << "\t" << "unicodeLayerName" << unicodeLayerName;
         } else if (key == "lyid") {
             quint32 id;
             psdread<byteOrder>(io, id);
-            dbgFile << "layer ID:" << id;
+            dbgFile << "\t" << "layer ID:" << id;
         } else if (key == "lfx2" || key == "lfxs") {
             // lfxs is a special variant of layer styles for group layers
             layerStyleXml = KisAslReader::readLfx2PsdSection(io, byteOrder);
@@ -170,6 +191,17 @@ void PsdAdditionalLayerInfoBlock::readImpl(QIODevice &io)
         } else if (key == "knko") {
         } else if (key == "spf") {
         } else if (key == "lclr") {
+            // layer label color.
+            quint16 col1 = 0;
+            quint16 col2 = 0;
+            quint16 col3 = 0;
+            quint16 col4 = 0;
+            psdread<byteOrder>(io, col1);
+            psdread<byteOrder>(io, col2);
+            psdread<byteOrder>(io, col3);
+            psdread<byteOrder>(io, col4);
+            dbgFile << "\t" << "layer color:" << col1 << col2 << col3 << col4;
+            labelColor = col1;
         } else if (key == "fxrp") {
         } else if (key == "grdm") {
         } else if (key == "lsct") {
@@ -341,6 +373,30 @@ void PsdAdditionalLayerInfoBlock::writePattBlockEx(QIODevice &io, const QDomDocu
     }
 }
 
+void PsdAdditionalLayerInfoBlock::writeLclrBlockEx(QIODevice &io, const quint16 &labelColor)
+{
+    switch (m_header.byteOrder) {
+    case psd_byte_order::psdLittleEndian:
+        writeLclrBlockExImpl<psd_byte_order::psdLittleEndian>(io, labelColor);
+        break;
+    default:
+        writeLclrBlockExImpl(io, labelColor);
+        break;
+    }
+}
+
+void PsdAdditionalLayerInfoBlock::writeFillLayerBlockEx(QIODevice &io, const QDomDocument &fillConfig, psd_fill_type type)
+{
+    switch (m_header.byteOrder) {
+    case psd_byte_order::psdLittleEndian:
+        writeFillLayerBlockExImpl<psd_byte_order::psdLittleEndian>(io, fillConfig, type);
+        break;
+    default:
+        writeFillLayerBlockExImpl(io, fillConfig, type);
+        break;
+    }
+}
+
 template<psd_byte_order byteOrder>
 void PsdAdditionalLayerInfoBlock::writePattBlockExImpl(QIODevice &io, const QDomDocument &patternsXmlDoc)
 {
@@ -355,6 +411,49 @@ void PsdAdditionalLayerInfoBlock::writePattBlockExImpl(QIODevice &io, const QDom
 
     } catch (KisAslWriterUtils::ASLWriteException &e) {
         warnKrita << "WARNING: Couldn't save layer style patterns block:" << PREPEND_METHOD(e.what());
+
+        // TODO: make this error recoverable!
+        throw e;
+    }
+}
+
+template<psd_byte_order byteOrder>
+void PsdAdditionalLayerInfoBlock::writeLclrBlockExImpl(QIODevice &io, const quint16 &lclr)
+{
+    KisAslWriterUtils::writeFixedString<byteOrder>("8BIM", io);
+    KisAslWriterUtils::writeFixedString<byteOrder>("lclr", io);
+    // 4x2 quint16
+    const quint32 len = 8;
+    SAFE_WRITE_EX(byteOrder, io, len);
+    quint16 zero = 0;
+    SAFE_WRITE_EX(byteOrder, io, lclr);
+    SAFE_WRITE_EX(byteOrder, io, zero);
+    SAFE_WRITE_EX(byteOrder, io, zero);
+    SAFE_WRITE_EX(byteOrder, io, zero);
+
+
+}
+
+template<psd_byte_order byteOrder>
+void PsdAdditionalLayerInfoBlock::writeFillLayerBlockExImpl(QIODevice &io, const QDomDocument &fillConfig, psd_fill_type type)
+{
+    KisAslWriterUtils::writeFixedString<byteOrder>("8BIM", io);
+    if (type == psd_fill_solid_color) {
+        KisAslWriterUtils::writeFixedString<byteOrder>("SoCo", io);
+    } else if (type == psd_fill_gradient) {
+        KisAslWriterUtils::writeFixedString<byteOrder>("GdFl", io);
+    } else {
+        KisAslWriterUtils::writeFixedString<byteOrder>("PtFl", io);
+    }
+    KisAslWriterUtils::OffsetStreamPusher<quint32, byteOrder> fillSizeTag(io, 2);
+
+    try {
+        KisAslWriter writer(byteOrder);
+
+        writer.writeFillLayerSectionEx(io, fillConfig);
+
+    } catch (KisAslWriterUtils::ASLWriteException &e) {
+        warnKrita << "WARNING: Couldn't save fill layer block:" << PREPEND_METHOD(e.what());
 
         // TODO: make this error recoverable!
         throw e;

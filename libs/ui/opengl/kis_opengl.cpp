@@ -27,6 +27,7 @@
 #include <kis_debug.h>
 #include <kis_config.h>
 #include "KisOpenGLModeProber.h"
+#include <KisRepaintDebugger.h>
 
 #include <KisUsageLogger.h>
 #include <boost/optional.hpp>
@@ -311,8 +312,6 @@ bool KisOpenGL::supportsLoD()
 
 bool KisOpenGL::hasOpenGL3()
 {
-    return true;
-
     initialize();
     return openGLCheckResult && openGLCheckResult->hasOpenGL3();
 }
@@ -524,6 +523,11 @@ KisOpenGL::RendererConfig generateSurfaceConfig(KisOpenGL::OpenGLRenderer render
     format.setRenderableType(info.first);
     format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
     format.setSwapInterval(0); // Disable vertical refresh syncing
+    if (KisRepaintDebugger::enabled()) {
+        // With repaint debugging, vsync is preferred so that all update regions
+        // can be visible.
+        format.setSwapInterval(1);
+    }
     if (debugContext) {
         format.setOption(QSurfaceFormat::DebugContext, true);
     }

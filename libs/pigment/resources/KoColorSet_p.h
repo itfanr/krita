@@ -50,13 +50,15 @@ public:
     bool loadAco();
     bool loadXml();
     bool loadSbz();
+    bool loadAse();
+    bool loadAcb();
 
     bool saveKpl(QIODevice *dev) const;
     bool loadKpl();
 
 public:
     KoColorSet *colorSet {0};
-    KoColorSet::PaletteType paletteType;
+    KoColorSet::PaletteType paletteType {UNKNOWN};
     QByteArray data;
     QString comment;
     QStringList groupNames; //names of the groups, this is used to determine the order they are in.
@@ -66,7 +68,11 @@ private:
     KoColorSet::PaletteType detectFormat(const QString &fileName, const QByteArray &ba);
     void scribusParseColor(KoColorSet *set, QXmlStreamReader *xml);
     bool loadScribusXmlPalette(KoColorSet *set, QXmlStreamReader *xml);
+    quint8 readByte(QIODevice *io);
     quint16 readShort(QIODevice *io);
+    qint32 readInt(QIODevice *io);
+    float readFloat(QIODevice *io);
+    QString readUnicodeString(QIODevice *io, bool sizeIsInt = false);
 
     void saveKplGroup(QDomDocument &doc, QDomElement &groupEle,
                       const KisSwatchGroup *group, QSet<const KoColorSpace *> &colorSetSet) const;

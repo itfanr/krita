@@ -203,17 +203,24 @@ public:
     }
 
     /**
-     * Set the softness for floodfill. The range is 0-100: 0 means the fill will
-     * have aliased edges, 100 means it will have soft edges.
+     * Set the opacity spread for floodfill. The range is 0-100: 0% means that
+     * the fully opaque area only encompasses the pixels exactly equal to the
+     * seed point with the other pixels of the selected region being
+     * semi-transparent (depending on how similar they are to the seed pixel)
+     * up to the region boundary (given by the threshold value). 100 means that
+     * the fully opaque area will encompass all the pixels of the selected
+     * region up to the contour. Any value inbetween will make the fully opaque
+     * portion of the region vary in size, with semi-transparent pixels
+     * inbetween it and  the region boundary
      */
-    void setSoftness(int softness)
+    void setOpacitySpread(int opacitySpread)
     {
-        m_softness = softness;
+        m_opacitySpread = opacitySpread;
     }
 
-    /** Returns the fill softness, see setSoftness for details */
-    int softness() const {
-        return m_softness;
+    /** Returns the fill opacity spread, see setOpacitySpread for details */
+    int opacitySpread() const {
+        return m_opacitySpread;
     }
 
     bool useCompositioning() const {
@@ -244,6 +251,16 @@ public:
         m_careForSelection = set;
     }
 
+    /** Sets if antiAlias should be applied to the selection */
+    void setAntiAlias(bool antiAlias) {
+        m_antiAlias = antiAlias;
+    }
+    
+    /** Get if antiAlias should be applied to the selection */
+    bool antiAlias() const {
+        return m_antiAlias;
+    }
+
     /** Sets the auto growth/shrinking radius */
     void setSizemod(int sizemod) {
         m_sizemod = sizemod;
@@ -251,7 +268,7 @@ public:
     
     /** Sets how much to auto-grow or shrink (if @p sizemod is negative) the selection
     flood before painting, this affects every fill operation except fillRect */
-    int sizemod() {
+    int sizemod() const {
         return m_sizemod;
     }
     
@@ -262,7 +279,7 @@ public:
     
     /** defines the feathering radius for selection flood operations, this affects every
     fill operation except fillRect */
-    uint feather() {
+    uint feather() const {
         return m_feather;
     }
 
@@ -272,21 +289,33 @@ public:
     }
 
     /** defines if the selection borders are treated as boundary in flood fill or not */
-    uint useSelectionAsBoundary() {
+    uint useSelectionAsBoundary() const {
         return m_useSelectionAsBoundary;
     }
 
-private:
+protected:
+    void setCurrentFillSelection(KisSelectionSP fillSelection)
+    {
+        m_fillSelection = fillSelection;
+    }
+
+    KisSelectionSP currentFillSelection() const
+    {
+        return m_fillSelection;
+    }
+
     // for floodfill
     void genericFillStart(int startX, int startY, KisPaintDeviceSP sourceDevice);
     void genericFillEnd(KisPaintDeviceSP filled);
 
+private:
     KisSelectionSP m_fillSelection;
 
     int m_feather;
     int m_sizemod;
+    bool m_antiAlias;
     int m_threshold;
-    int m_softness;
+    int m_opacitySpread;
     int m_width, m_height;
     QRect m_rect;
     bool m_careForSelection;

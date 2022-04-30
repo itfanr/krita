@@ -9,6 +9,9 @@
 
 #include <kis_assistant_tool.h>
 
+#include <kis_debug.h>
+#include <klocalizedstring.h>
+
 #include <QPainter>
 #include <QPainterPath>
 #include <QXmlStreamReader>
@@ -16,40 +19,41 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QLineF>
-
-
-#include <kis_debug.h>
-#include <klocalizedstring.h>
-#include <KColorButton>
-#include "kis_dom_utils.h"
 #include <QMessageBox>
 
 #include <KoIcon.h>
 #include <KoFileDialog.h>
 #include <KoViewConverter.h>
 #include <KoPointerEvent.h>
-#include <KoSnapGuide.h>
 
 #include <canvas/kis_canvas2.h>
+#include <kis_abstract_perspective_grid.h>
 #include <kis_canvas_resource_provider.h>
 #include <kis_cursor.h>
+#include <kis_document_aware_spin_box_unit_manager.h>
+#include <kis_dom_utils.h>
+#include <kis_global.h>
 #include <kis_image.h>
-#include <KisViewManager.h>
-#include <kis_icon.h>
-#include <kis_abstract_perspective_grid.h>
 #include <kis_painting_assistants_decoration.h>
-#include "kis_global.h"
-#include "VanishingPointAssistant.h"
-#include "EditAssistantsCommand.h"
 #include <kis_undo_adapter.h>
+
+#include <KisViewManager.h>
+
+#include "EditAssistantsCommand.h"
+#include "PerspectiveAssistant.h"
+#include "RulerAssistant.h"
 #include "TwoPointAssistant.h"
+#include "VanishingPointAssistant.h"
 
 #include <math.h>
-#include <QtCore/qmath.h>
 
 KisAssistantTool::KisAssistantTool(KoCanvasBase * canvas)
-    : KisTool(canvas, KisCursor::arrowCursor()), m_canvas(dynamic_cast<KisCanvas2*>(canvas)),
-      m_assistantDrag(0), m_newAssistant(0), m_optionsWidget(0)
+    : KisTool(canvas, KisCursor::arrowCursor())
+    , m_canvas(dynamic_cast<KisCanvas2*>(canvas))
+    , m_assistantDrag(0)
+    , m_newAssistant(0)
+    , m_optionsWidget(0)
+    , m_unitManager(new KisDocumentAwareSpinBoxUnitManager(this))
 {
     Q_ASSERT(m_canvas);
     setObjectName("tool_assistanttool");
@@ -403,6 +407,7 @@ void KisAssistantTool::continueActionImpl(KoPointerEvent *event)
     KisPaintingAssistantsDecorationSP canvasDecoration = m_canvas->paintingAssistantsDecoration();
 
     if (m_handleDrag) {
+        m_previousHandlePos = *m_handleDrag;
         *m_handleDrag = event->point;
 
         KisPaintingAssistantSP selectedAssistant = m_canvas->paintingAssistantsDecoration()->selectedAssistant();
@@ -581,6 +586,30 @@ void KisAssistantTool::continueActionImpl(KoPointerEvent *event)
                 *side_hndl[7] = perspective_line_b2.p2();
             }
         }
+        // The following section handles rulers that have been set to a
+        // constant length
+        if (m_handleDrag && (assistant->id() == "ruler" || assistant->id() == "infinite ruler")
+            && qSharedPointerCast<RulerAssistant>(assistant)->hasFixedLength()
+            && assistant->isAssistantComplete()) {
+            
+            QSharedPointer<RulerAssistant> ruler = qSharedPointerCast<RulerAssistant>(assistant);
+          
+            if (m_handleDrag == ruler->handles()[0]) {
+                // Dragging handle 1 moves the ruler
+                *ruler->handles()[1] += *ruler->handles()[0] - m_previousHandlePos;
+            }
+            else if (m_handleDrag == ruler->handles()[1]) {
+                // Dragging handle 2 only allows rotation
+                QPointF center = *ruler->handles()[0];
+                QPointF handle = *ruler->handles()[1];
+                
+                QPointF direction = handle - center;
+                qreal distance = sqrt(KisPaintingAssistant::norm2(direction));
+                QPointF delta = direction / distance * ruler->fixedLength();
+                
+                *ruler->handles()[1] = center + delta;
+            }
+        }
     }
     if (wasHiglightedNode && !m_higlightedNode) {
         m_canvas->updateCanvas(); // TODO update only the relevant part of the canvas
@@ -717,10 +746,16 @@ void KisAssistantTool::updateToolOptionsUI()
      if (m_selectedAssistant) {
          bool isVanishingPointAssistant = m_selectedAssistant->id() == "vanishing point";
          bool isTwoPointAssistant = m_selectedAssistant->id() == "two point";
+         bool isRulerAssistant = m_selectedAssistant->id() == "ruler"
+                              || m_selectedAssistant->id() == "infinite ruler";
+         bool isPerspectiveAssistant = m_selectedAssistant->id() == "perspective";
 
          m_options.vanishingPointAngleSpinbox->setVisible(isVanishingPointAssistant);
          m_options.twoPointDensitySpinbox->setVisible(isTwoPointAssistant);
          m_options.twoPointUseVerticalCheckbox->setVisible(isTwoPointAssistant);
+         m_options.subdivisionsSpinbox->setVisible(isRulerAssistant || isPerspectiveAssistant);
+         m_options.minorSubdivisionsSpinbox->setVisible(isRulerAssistant);
+         m_options.fixedLengthCheckbox->setVisible(isRulerAssistant);
 
          if (isVanishingPointAssistant) {
              QSharedPointer <VanishingPointAssistant> assis = qSharedPointerCast<VanishingPointAssistant>(m_selectedAssistant);
@@ -733,6 +768,32 @@ void KisAssistantTool::updateToolOptionsUI()
              m_options.twoPointUseVerticalCheckbox->setChecked(assis->useVertical());
          }
 
+         if (isRulerAssistant) {
+             QSharedPointer <RulerAssistant> assis = qSharedPointerCast<RulerAssistant>(m_selectedAssistant);
+             m_options.subdivisionsSpinbox->setValue(assis->subdivisions());
+             m_options.minorSubdivisionsSpinbox->setValue(assis->minorSubdivisions());
+             m_options.fixedLengthCheckbox->setChecked(assis->hasFixedLength());
+             
+             m_options.fixedLengthSpinbox->setVisible(assis->hasFixedLength());
+             m_options.fixedLengthUnit->setVisible(assis->hasFixedLength());
+             {
+                // Block valueChanged signals during unit switch
+                QSignalBlocker b(m_options.fixedLengthSpinbox);
+                m_unitManager->setApparentUnitFromSymbol(assis->fixedLengthUnit());
+                m_options.fixedLengthUnit->setCurrentIndex(m_unitManager->getApparentUnitId());
+                m_options.fixedLengthSpinbox->changeValue(assis->fixedLength());
+             }
+             m_options.fixedLengthSpinbox->setPrefix("");
+         } else {
+             m_options.fixedLengthSpinbox->setVisible(false);
+             m_options.fixedLengthUnit->setVisible(false);
+         }
+         
+         if (isPerspectiveAssistant) {
+             QSharedPointer <PerspectiveAssistant> assis = qSharedPointerCast<PerspectiveAssistant>(m_selectedAssistant);
+             m_options.subdivisionsSpinbox->setValue(assis->subdivisions());
+         }
+         
          // load custom color settings from assistant (this happens when changing assistant
          m_options.useCustomAssistantColor->setChecked(m_selectedAssistant->useCustomColor());
          m_options.customAssistantColorButton->setColor(m_selectedAssistant->assistantCustomColor());
@@ -749,6 +810,11 @@ void KisAssistantTool::updateToolOptionsUI()
          m_options.vanishingPointAngleSpinbox->setVisible(false);
          m_options.twoPointDensitySpinbox->setVisible(false);
          m_options.twoPointUseVerticalCheckbox->setVisible(false);
+         m_options.subdivisionsSpinbox->setVisible(false);
+         m_options.minorSubdivisionsSpinbox->setVisible(false);
+         m_options.fixedLengthCheckbox->setVisible(false);
+         m_options.fixedLengthSpinbox->setVisible(false);
+         m_options.fixedLengthUnit->setVisible(false);
      }
 
      // show/hide elements if an assistant is selected or not
@@ -765,7 +831,7 @@ void KisAssistantTool::updateToolOptionsUI()
       m_options.globalColorLabel->setEnabled(!showCustomColorSettings);
 
       QString key = m_options.availableAssistantsComboBox->model()->index( m_options.availableAssistantsComboBox->currentIndex(), 0 ).data(Qt::UserRole).toString();
-      m_options.localAssistantCheckbox->setVisible(key == "two point" || key == "vanishing point" || "parallel ruler");
+      m_options.localAssistantCheckbox->setVisible(key == "two point" || key == "vanishing point" || key == "parallel ruler");
 
 }
 
@@ -786,7 +852,7 @@ void KisAssistantTool::slotChangeVanishingPointAngle(double value)
         }
     }
 
-    m_canvas->canvasWidget()->update();
+    m_canvas->updateCanvasDecorations();
 }
 
 void KisAssistantTool::slotChangeTwoPointDensity(double value)
@@ -806,7 +872,7 @@ void KisAssistantTool::slotChangeTwoPointDensity(double value)
         }
     }
 
-    m_canvas->canvasWidget()->update();
+    m_canvas->updateCanvasDecorations();
 }
 
 void KisAssistantTool::slotChangeTwoPointUseVertical(int value)
@@ -826,7 +892,162 @@ void KisAssistantTool::slotChangeTwoPointUseVertical(int value)
         }
     }
 
-    m_canvas->canvasWidget()->update();
+    m_canvas->updateCanvasDecorations();
+}
+
+void KisAssistantTool::slotChangeSubdivisions(int value) {
+    if (m_canvas->paintingAssistantsDecoration()->assistants().length() == 0) {
+        return;
+    }
+    
+    // get the selected assistant and change the angle value
+    KisPaintingAssistantSP m_selectedAssistant =  m_canvas->paintingAssistantsDecoration()->selectedAssistant();
+    if (m_selectedAssistant) {
+        bool isRulerAssistant = m_selectedAssistant->id() == "ruler"
+                             || m_selectedAssistant->id() == "infinite ruler";
+        bool isPerspectiveAssistant = m_selectedAssistant->id() == "perspective";
+        
+        if (isRulerAssistant) {
+            QSharedPointer <RulerAssistant> assis = qSharedPointerCast<RulerAssistant>(m_selectedAssistant);
+            assis->setSubdivisions(value);
+            
+            m_options.minorSubdivisionsSpinbox->setEnabled(value > 0);
+        }
+        
+        else if (isPerspectiveAssistant) {
+            QSharedPointer <PerspectiveAssistant> assis = qSharedPointerCast<PerspectiveAssistant>(m_selectedAssistant);
+            assis->setSubdivisions(value);
+        }
+    }
+    
+    m_canvas->updateCanvasDecorations();
+}
+
+void KisAssistantTool::slotChangeMinorSubdivisions(int value) {
+    if (m_canvas->paintingAssistantsDecoration()->assistants().length() == 0) {
+        return;
+    }
+    
+    // get the selected assistant and change the angle value
+    KisPaintingAssistantSP m_selectedAssistant =  m_canvas->paintingAssistantsDecoration()->selectedAssistant();
+    if (m_selectedAssistant) {
+        bool isRulerAssistant = m_selectedAssistant->id() == "ruler"
+                             || m_selectedAssistant->id() == "infinite ruler";
+        
+        if (isRulerAssistant) {
+            QSharedPointer <RulerAssistant> assis = qSharedPointerCast<RulerAssistant>(m_selectedAssistant);
+            assis->setMinorSubdivisions(value);
+        }
+    }
+    
+    m_canvas->updateCanvasDecorations();
+}
+
+void KisAssistantTool::slotEnableFixedLength(int enabled) {
+    if (m_canvas->paintingAssistantsDecoration()->assistants().length() == 0) {
+        return;
+    }
+    
+    // get the selected assistant and change the angle value
+    KisPaintingAssistantSP m_selectedAssistant =  m_canvas->paintingAssistantsDecoration()->selectedAssistant();
+    if (m_selectedAssistant) {
+        bool isRulerAssistant = m_selectedAssistant->id() == "ruler"
+                             || m_selectedAssistant->id() == "infinite ruler";
+        
+        if (isRulerAssistant) {
+            QSharedPointer <RulerAssistant> assis = qSharedPointerCast<RulerAssistant>(m_selectedAssistant);
+            
+            m_options.fixedLengthSpinbox->setVisible(enabled);
+            m_options.fixedLengthUnit->setVisible(enabled);
+            
+            if (enabled && !assis->hasFixedLength() && assis->handles().size() >= 2) {
+                // When enabling, set the length to the current length.
+                QPointF a = *assis->handles()[0];
+                QPointF b = *assis->handles()[1];
+                qreal length = sqrt(KisPaintingAssistant::norm2(b - a));
+                assis->setFixedLength(length);
+                m_options.fixedLengthSpinbox->changeValue(length);
+            }
+  
+            assis->enableFixedLength(enabled);
+        }
+    }
+    
+    m_canvas->updateCanvasDecorations();
+}
+
+void KisAssistantTool::slotChangeFixedLength(double) {
+    // This slot should only be called when the user actually changes the
+    // value, not when it is changed through unit conversions. Use
+    // QSignalBlocker on the spin box when converting units to achieve this.
+  
+    if (m_canvas->paintingAssistantsDecoration()->assistants().length() == 0) {
+        return;
+    }
+    
+    // get the selected assistant and change the angle value
+    KisPaintingAssistantSP m_selectedAssistant =  m_canvas->paintingAssistantsDecoration()->selectedAssistant();
+    if (m_selectedAssistant) {
+        bool isRulerAssistant = m_selectedAssistant->id() == "ruler"
+                             || m_selectedAssistant->id() == "infinite ruler";
+        
+        if (isRulerAssistant) {
+            QSharedPointer <RulerAssistant> assis = qSharedPointerCast<RulerAssistant>(m_selectedAssistant);
+            // Stores the newly entered data (length & unit) in the assistant
+            assis->setFixedLengthUnit(m_unitManager->getApparentUnitSymbol());
+            assis->setFixedLength(m_options.fixedLengthSpinbox->value());
+            assis->ensureLength();
+            m_options.fixedLengthSpinbox->setPrefix("");
+        }
+    }
+    
+    m_canvas->updateCanvasDecorations();
+}
+
+void KisAssistantTool::slotChangeFixedLengthUnit(int index) {
+    if (m_canvas->paintingAssistantsDecoration()->assistants().length() == 0) {
+        return;
+    }
+  
+    // get the selected assistant and change the angle value
+    KisPaintingAssistantSP m_selectedAssistant =
+            m_canvas->paintingAssistantsDecoration()->selectedAssistant();
+    if (m_selectedAssistant) {
+        bool isRulerAssistant = m_selectedAssistant->id() == "ruler" ||
+                                m_selectedAssistant->id() == "infinite ruler";
+  
+        if (isRulerAssistant) {
+            QSharedPointer<RulerAssistant> assis = qSharedPointerCast<RulerAssistant>(m_selectedAssistant);
+            
+            // Saving and restoring the actual length manually, since the
+            // unit manager rounds without warning during conversion
+            qreal current_length = assis->fixedLength();
+            {
+                // Block signals from the spinbox while changing the unit to
+                // avoid edits via valueChanged() in the meantime
+                QSignalBlocker b(m_options.fixedLengthSpinbox);
+                m_unitManager->selectApparentUnitFromIndex(index);
+                m_options.fixedLengthSpinbox->changeValue(current_length);
+            }
+            
+            QString unit = m_unitManager->getApparentUnitSymbol();
+            
+            if (unit == assis->fixedLengthUnit()) {
+                // If the previous unit is selected, show no prefix: perfect match
+                m_options.fixedLengthSpinbox->setPrefix("");
+            }
+            else {
+                if (abs(m_options.fixedLengthSpinbox->value() - current_length) > 1e-3) {
+                    // If the units don't match, show the approximate symbol as prefix
+                    m_options.fixedLengthSpinbox->setPrefix(u8"\u2248");
+                } else {
+                    // If the units don't match but converted perfectly
+                    // (close enough: +- 0.001 pt), show equals instead
+                    m_options.fixedLengthSpinbox->setPrefix("=");
+                }
+            }
+        }
+    }
 }
 
 void KisAssistantTool::mouseMoveEvent(KoPointerEvent *event)
@@ -846,7 +1067,7 @@ void KisAssistantTool::mouseMoveEvent(KoPointerEvent *event)
         m_selectedNode2.data()->operator = (QPointF(m_selectedNode2.data()->x(),m_selectedNode2.data()->y()) + translate);
     }
 
-     m_canvas->updateCanvas();
+    m_canvas->updateCanvasDecorations();
 }
 
 
@@ -931,7 +1152,7 @@ void KisAssistantTool::removeAllAssistants()
 
 void KisAssistantTool::loadAssistants()
 {
-    KoFileDialog dialog(m_canvas->viewManager()->mainWindow(), KoFileDialog::OpenFile, "OpenAssistant");
+    KoFileDialog dialog(m_canvas->viewManager()->mainWindowAsQWidget(), KoFileDialog::OpenFile, "OpenAssistant");
     dialog.setCaption(i18n("Select an Assistant"));
     dialog.setDefaultDir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation));
     dialog.setMimeTypeFilters(QStringList() << "application/x-krita-assistant", "application/x-krita-assistant");
@@ -1164,7 +1385,7 @@ void KisAssistantTool::saveAssistants()
     xml.writeEndElement();
     xml.writeEndDocument();
 
-    KoFileDialog dialog(m_canvas->viewManager()->mainWindow(), KoFileDialog::SaveFile, "OpenAssistant");
+    KoFileDialog dialog(m_canvas->viewManager()->mainWindowAsQWidget(), KoFileDialog::SaveFile, "OpenAssistant");
     dialog.setCaption(i18n("Save Assistant"));
     dialog.setDefaultDir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation));
     dialog.setMimeTypeFilters(QStringList() << "application/x-krita-assistant", "application/x-krita-assistant");
@@ -1217,7 +1438,11 @@ QWidget *KisAssistantTool::createOptionWidget()
         connect(m_options.vanishingPointAngleSpinbox, SIGNAL(valueChanged(double)), this, SLOT(slotChangeVanishingPointAngle(double)));
         connect(m_options.twoPointDensitySpinbox, SIGNAL(valueChanged(double)), this, SLOT(slotChangeTwoPointDensity(double)));
         connect(m_options.twoPointUseVerticalCheckbox, SIGNAL(stateChanged(int)), this, SLOT(slotChangeTwoPointUseVertical(int)));
-
+        
+        connect(m_options.subdivisionsSpinbox, SIGNAL(valueChanged(int)), this, SLOT(slotChangeSubdivisions(int)));
+        connect(m_options.minorSubdivisionsSpinbox, SIGNAL(valueChanged(int)), this, SLOT(slotChangeMinorSubdivisions(int)));
+        connect(m_options.fixedLengthCheckbox, SIGNAL(stateChanged(int)), this, SLOT(slotEnableFixedLength(int)));
+        connect(m_options.fixedLengthSpinbox, SIGNAL(valueChangedPt(double)), this, SLOT(slotChangeFixedLength(double)));
 
         // initialize UI elements with existing data if possible
         if (m_canvas && m_canvas->paintingAssistantsDecoration()) {
@@ -1256,11 +1481,32 @@ QWidget *KisAssistantTool::createOptionWidget()
         m_options.vanishingPointAngleSpinbox->setSuffix(QChar(Qt::Key_degree));
         m_options.vanishingPointAngleSpinbox->setRange(1.0, 180.0);
         m_options.vanishingPointAngleSpinbox->setSingleStep(1.0);
-
-
+        
+        m_options.subdivisionsSpinbox->setPrefix(i18n("Subdivisions: "));
+        m_options.subdivisionsSpinbox->setRange(0, 100);
+        m_options.subdivisionsSpinbox->setSoftRange(0, 20);
+        
+        m_options.minorSubdivisionsSpinbox->setPrefix(i18n("Minor Subdivisions: "));
+        m_options.minorSubdivisionsSpinbox->setRange(1, 5);
+        
+        m_unitManager->setUnitDimension(KisSpinBoxUnitManager::LENGTH);
+        m_options.fixedLengthSpinbox->setUnitManager(m_unitManager);
+        m_options.fixedLengthSpinbox->setDisplayUnit(false);
+        m_options.fixedLengthSpinbox->setMinimum(0);
+        m_options.fixedLengthSpinbox->setDecimals(2);
+        m_options.fixedLengthUnit->setModel(m_unitManager);
+        m_unitManager->setApparentUnitFromSymbol("px");
+        connect(m_options.fixedLengthUnit, SIGNAL(currentIndexChanged(int)), this, SLOT(slotChangeFixedLengthUnit(int)));
+        connect(m_unitManager, SIGNAL(unitChanged(int)), m_options.fixedLengthUnit, SLOT(setCurrentIndex(int)));
+        
         m_options.vanishingPointAngleSpinbox->setVisible(false);
         m_options.twoPointDensitySpinbox->setVisible(false);
-
+        m_options.subdivisionsSpinbox->setVisible(false);
+        m_options.minorSubdivisionsSpinbox->setVisible(false);
+        m_options.fixedLengthCheckbox->setVisible(false);
+        m_options.fixedLengthSpinbox->setVisible(false);
+        m_options.fixedLengthUnit->setVisible(false);
+        
         KConfigGroup cfg = KSharedConfig::openConfig()->group(toolId());
         m_options.localAssistantCheckbox->setChecked(cfg.readEntry("LimitAssistantToArea", false));
 
@@ -1283,7 +1529,7 @@ void KisAssistantTool::slotGlobalAssistantsColorChanged(const QColor& setColor)
     m_canvas->paintingAssistantsDecoration()->setGlobalAssistantsColor(newColor);
 
     m_canvas->paintingAssistantsDecoration()->uncache();
-    m_canvas->canvasWidget()->update();
+    m_canvas->updateCanvasDecorations();
 }
 
 void KisAssistantTool::slotGlobalAssistantOpacityChanged()
@@ -1294,7 +1540,7 @@ void KisAssistantTool::slotGlobalAssistantOpacityChanged()
     m_canvas->paintingAssistantsDecoration()->setGlobalAssistantsColor(newColor);
 
     m_canvas->paintingAssistantsDecoration()->uncache();
-    m_canvas->canvasWidget()->update();
+    m_canvas->updateCanvasDecorations();
 }
 
 void KisAssistantTool::slotUpdateCustomColor()
@@ -1313,7 +1559,7 @@ void KisAssistantTool::slotUpdateCustomColor()
     }
 
     updateToolOptionsUI();
-    m_canvas->canvasWidget()->update();
+    m_canvas->updateCanvasDecorations();
 }
 
 void KisAssistantTool::slotCustomOpacityChanged()
@@ -1329,7 +1575,7 @@ void KisAssistantTool::slotCustomOpacityChanged()
 
     // this forces the canvas to refresh to see the changes immediately
     m_canvas->paintingAssistantsDecoration()->uncache();
-    m_canvas->canvasWidget()->update();
+    m_canvas->updateCanvasDecorations();
 }
 
 void KisAssistantTool::slotLocalAssistantCheckboxChanged()

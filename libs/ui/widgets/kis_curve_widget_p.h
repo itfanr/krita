@@ -22,7 +22,7 @@ enum enumState {
 class Q_DECL_HIDDEN KisCurveWidget::Private
 {
 
-    KisCurveWidget *m_curveWidget;
+    KisCurveWidget *m_curveWidget {nullptr};
     KisSpinBoxSplineUnitConverter unitConverter;
 
 
@@ -30,43 +30,46 @@ public:
     Private(KisCurveWidget *parent);
 
     /* Dragging variables */
-    int m_grab_point_index;
-    double m_grabOffsetX;
-    double m_grabOffsetY;
-    double m_grabOriginalX;
-    double m_grabOriginalY;
+    int m_grab_point_index {-1};
+    double m_grabOffsetX {0.0};
+    double m_grabOffsetY {0.0};
+    double m_grabOriginalX {0.0};
+    double m_grabOriginalY {0.0};
     QPointF m_draggedAwayPoint;
-    int m_draggedAwayPointIndex;
+    int m_draggedAwayPointIndex {0};
 
-    bool m_readOnlyMode;
-    bool m_guideVisible;
+    bool m_readOnlyMode {false};
+    bool m_guideVisible {false};
     QColor m_colorGuide;
 
 
     /* The curve itself */
-    bool    m_splineDirty;
+    bool    m_splineDirty {false};
     KisCubicCurve m_curve;
 
     QPixmap m_pix;
     QPixmap m_pixmapBase;
-    bool m_pixmapDirty;
-    QPixmap *m_pixmapCache;
+    bool m_pixmapDirty {true};
+    QPixmap *m_pixmapCache {nullptr};
 
     /* In/Out controls */
-    QSpinBox *m_intIn;
-    QSpinBox *m_intOut;
+    QSpinBox *m_intIn {nullptr};
+    QSpinBox *m_intOut {nullptr};
 
     /* Working range of them */
-    int m_inMin;
-    int m_inMax;
-    int m_outMin;
-    int m_outMax;
+    int m_inMin {0};
+    int m_inMax {0};
+    int m_outMin {0};
+    int m_outMax {0};
+
+    /* view-logic variables */
+    int m_handleSize {12}; // size of the control points (diameter, in logical pixels) - both for painting and for detecting clicks
 
     /**
      * State functions.
      * At the moment used only for dragging.
      */
-    enumState m_state;
+    enumState m_state {enumState::ST_NORMAL};
 
     inline void setState(enumState st);
     inline enumState state() const;
@@ -163,6 +166,10 @@ int KisCurveWidget::Private::nearestPointInRange(QPointF pt, int wWidth, int wHe
     int nearestIndex = -1;
     int i = 0;
 
+    // Important:
+    // pt and points from the curve are in (0, 1) ranges
+    // hence the usage of wWidth etc.
+
     Q_FOREACH (const QPointF & point, m_curve.points()) {
         double distanceSquared = (pt.x() - point.x()) *
                                  (pt.x() - point.x()) +
@@ -177,8 +184,20 @@ int KisCurveWidget::Private::nearestPointInRange(QPointF pt, int wWidth, int wHe
     }
 
     if (nearestIndex >= 0) {
-        if (fabs(pt.x() - m_curve.points()[nearestIndex].x()) *(wWidth - 1) < 5 &&
-                fabs(pt.y() - m_curve.points()[nearestIndex].y()) *(wHeight - 1) < 5) {
+
+        // difference between points is in (0, 1) range as well (or rather, (-1,1))
+        QPointF distanceVector = QPointF((pt.x() - m_curve.points()[nearestIndex].x()) *(wWidth - 1),
+                                        (pt.y() - m_curve.points()[nearestIndex].y()) *(wHeight - 1));
+
+        if (distanceVector.x() > m_handleSize || distanceVector.y() > m_handleSize) {
+            // small performance optimization
+            // distance is for sure bigger than m_handleSize now, no need to check
+            return -1;
+        }
+
+        double distanceInPixels = QLineF(distanceVector, QPointF(0, 0)).length();
+
+        if (distanceInPixels <= m_handleSize) {
             return nearestIndex;
         }
     }

@@ -103,7 +103,18 @@ KisMask::~KisMask()
 void KisMask::setImage(KisImageWSP image)
 {
     KisPaintDeviceSP parentPaintDevice = parent() ? parent()->original() : 0;
-    KisDefaultBoundsBaseSP defaultBounds = new KisSelectionDefaultBounds(parentPaintDevice);
+    KisDefaultBoundsBaseSP defaultBounds;
+
+    if (parentPaintDevice) {
+        defaultBounds = new KisSelectionDefaultBounds(parentPaintDevice);
+    } else {
+        if (image) {
+            qWarning() << "WARNING: KisMask::setImage() was called without any parent layer being set";
+        }
+
+        // just a fallback solution
+        defaultBounds = new KisDefaultBounds(image);
+    }
 
     if (m_d->selection) {
         m_d->selection->setDefaultBounds(defaultBounds);

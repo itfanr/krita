@@ -31,6 +31,7 @@
 #include "kis_change_frame_action.h"
 #include "kis_zoom_and_rotate_action.h"
 #include "KisCanvasOnlyAction.h"
+#include "KisTouchGestureAction.h"
 
 #define PROFILE_VERSION 5
 
@@ -217,7 +218,8 @@ void KisInputProfileManager::loadProfiles()
             profileEntries[entry.name] = QList<ProfileEntry>();
         }
 
-        if (p.contains(".kde") || p.contains(".krita")) {
+        QString fileName = QFileInfo(p).fileName();
+        if (fileName.contains(".kde") || fileName.contains(".krita")) {
             // It's the user defined one, drop the others
             profileEntries[entry.name].clear();
             profileEntries[entry.name].append(entry);
@@ -365,7 +367,7 @@ void KisInputProfileManager::Private::createActions()
     actions.append(new KisGammaExposureAction());
     actions.append(new KisChangeFrameAction());
     actions.append(new KisZoomAndRotateAction());
-    actions.append(new KisCanvasOnlyAction());
+    actions.append(new KisTouchGestureAction());
 }
 
 QString KisInputProfileManager::Private::profileFileName(const QString &profileName)

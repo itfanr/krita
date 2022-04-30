@@ -152,12 +152,10 @@ void KisTiffTest::testSaveTiffLabColorSpace()
 }
 
 
-void KisTiffTest::testSaveTiffYCrCbAColorSpace()
+void KisTiffTest::testSaveTiffYCbCrAColorSpace()
 {
-    /*
-     * There is no public/open profile for YCrCbA, so no way to test it...
-     *
-    const QString profile = "";
+    /* We first need to implement saving YCbCr before we can test this.
+    const QString profile = "ITU-R BT.709-6 + BT.1886 YCbCr ICC V4 profile";
     testSaveTiffColorSpace(YCbCrAColorModelID.id(), Integer8BitsColorDepthID.id(), profile);
     testSaveTiffColorSpace(YCbCrAColorModelID.id(), Integer16BitsColorDepthID.id(), profile);
     testSaveTiffColorSpace(YCbCrAColorModelID.id(), Float32BitsColorDepthID.id(), profile);

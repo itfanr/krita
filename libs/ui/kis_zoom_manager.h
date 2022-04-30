@@ -65,6 +65,8 @@ public:
     qreal resolutionX() const;
     qreal resolutionY() const;
 
+    void updateZoomMarginSize();
+
 public Q_SLOTS:
 
     void slotZoomChanged(KoZoomMode::Mode mode, qreal zoom);
@@ -73,9 +75,10 @@ public Q_SLOTS:
     void setShowRulers(bool show);
     void setRulersTrackMouse(bool value);
     void mousePositionChanged(const QPoint &viewPos);
-    void changeAspectMode(bool aspectMode);
+    void changeCanvasMappingMode(bool canvasMappingMode);
     void pageOffsetChanged();
     void zoomTo100();
+    void slotToggleZoomToFit();
     void applyRulersUnit(const KoUnit &baseUnit);
     void setMinMaxZoom();
     void setRulersPixelMultiple2(bool enabled);
@@ -90,20 +93,23 @@ private:
 private:
 
     QPointer<KisView> m_view;
-    KoZoomHandler * m_zoomHandler;
-    KoCanvasController *m_canvasController;
-    KoZoomController *m_zoomController;
-    KoRuler * m_horizontalRuler;
-    KoRuler * m_verticalRuler;
-    KoZoomAction * m_zoomAction;
+    KoZoomHandler * m_zoomHandler {nullptr};
+    KoCanvasController *m_canvasController {nullptr};
+    KoZoomController *m_zoomController {nullptr};
+    KoRuler * m_horizontalRuler {nullptr};
+    KoRuler * m_verticalRuler {nullptr};
+    KoZoomAction * m_zoomAction {nullptr};
     QPointer<QWidget> m_zoomActionWidget;
     QPoint m_rulersOffset;
     KisSignalAutoConnectionsStore m_mouseTrackingConnections;
-    qreal m_physicalDpiX;
-    qreal m_physicalDpiY;
-    qreal m_devicePixelRatio;
-    bool m_aspectMode {false};
+    qreal m_physicalDpiX {72.0};
+    qreal m_physicalDpiY {72.0};
+    qreal m_devicePixelRatio {1.0};
+    bool m_canvasMappingMode {false};
     KisSignalCompressor m_guiUpdateCompressor;
+    qreal m_previousZoomLevel {1.0};
+    KoZoomMode::Mode m_previousZoomMode;
+    QPointF m_previousZoomPoint;
 };
 
 

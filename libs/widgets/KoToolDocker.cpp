@@ -24,13 +24,19 @@ public:
     {
     }
 
+    ~Private() {
+        /// Hider widget is not part of any widget hierarchy (which is intentional
+        /// due to bug 447522), so we need to delete it manually
+        delete hiderWidget;
+    }
+
     QList<QPointer<QWidget> > currentWidgetList;
     QSet<QWidget *> currentAuxWidgets;
-    QScrollArea *scrollArea;
-    QWidget *hiderWidget; // non current widgets are hidden by being children of this
-    QWidget *housekeeperWidget;
-    QGridLayout *housekeeperLayout;
-    KoToolDocker *q;
+    QScrollArea *scrollArea {nullptr};
+    QWidget *hiderWidget {nullptr}; // non current widgets are hidden by being children of this
+    QWidget *housekeeperWidget {nullptr};
+    QGridLayout *housekeeperLayout {nullptr};
+    KoToolDocker *q {nullptr};
     Qt::DockWidgetArea dockingArea;
 
     void resetWidgets()
@@ -144,7 +150,7 @@ KoToolDocker::KoToolDocker(QWidget *parent)
     d->housekeeperLayout->setContentsMargins(4,4,4,0);
     d->housekeeperLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
 
-    d->hiderWidget = new QWidget(d->housekeeperWidget);
+    d->hiderWidget = new QWidget();
     d->hiderWidget->setVisible(false);
 
     d->scrollArea = new QScrollArea();

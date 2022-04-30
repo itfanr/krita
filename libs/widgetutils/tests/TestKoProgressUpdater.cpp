@@ -20,13 +20,15 @@ void TestKoProgressUpdater::test()
 
     KoProgressUpdater progress(&testProxy);
     progress.setUpdateInterval(1);
+    QTest::qWait(15);
 
     QCOMPARE(testProxy.min(), 0);
-    QCOMPARE(testProxy.max(), 0);
+    QCOMPARE(testProxy.max(), 99);
     QCOMPARE(testProxy.value(), 0);
     QCOMPARE(testProxy.format(), QString(""));
 
     progress.start(100, "Test Action: %p%");
+    QTest::qWait(15);
 
     QCOMPARE(testProxy.min(), 0);
     QCOMPARE(testProxy.max(), 99);
@@ -34,6 +36,7 @@ void TestKoProgressUpdater::test()
     QCOMPARE(testProxy.format(), QString("Test Action: %p%"));
 
     QPointer<KoUpdater> updater1 = progress.startSubtask(1, "");
+    QTest::qWait(15);
 
     QCOMPARE(testProxy.min(), 0);
     QCOMPARE(testProxy.max(), 99);
@@ -95,7 +98,7 @@ void TestKoProgressUpdater::testNamedSubtasks()
     progress.setAutoNestNames(true);
 
     QCOMPARE(testProxy.min(), 0);
-    QCOMPARE(testProxy.max(), 0);
+    QCOMPARE(testProxy.max(), 99);
     QCOMPARE(testProxy.value(), 0);
     QCOMPARE(testProxy.format(), QString(""));
     QCOMPARE(testProxy.autoNestedName(), QString(""));
@@ -166,7 +169,7 @@ void TestKoProgressUpdater::testNamedSubtasksUnnamedParent()
     progress.setAutoNestNames(true);
 
     QCOMPARE(testProxy.min(), 0);
-    QCOMPARE(testProxy.max(), 0);
+    QCOMPARE(testProxy.max(), 99);
     QCOMPARE(testProxy.value(), 0);
     QCOMPARE(testProxy.format(), QString(""));
     QCOMPARE(testProxy.autoNestedName(), QString(""));
@@ -199,7 +202,7 @@ void TestKoProgressUpdater::testPersistentSubtask()
     progress.setAutoNestNames(true);
 
     QCOMPARE(testProxy.min(), 0);
-    QCOMPARE(testProxy.max(), 0);
+    QCOMPARE(testProxy.max(), 99);
     QCOMPARE(testProxy.value(), 0);
     QCOMPARE(testProxy.format(), QString(""));
     QCOMPARE(testProxy.autoNestedName(), QString(""));
@@ -269,7 +272,7 @@ void TestKoProgressUpdater::testDestructionNonpersistentSubtasks()
     progress.setAutoNestNames(true);
 
     QCOMPARE(testProxy.min(), 0);
-    QCOMPARE(testProxy.max(), 0);
+    QCOMPARE(testProxy.max(), 99);
     QCOMPARE(testProxy.value(), 0);
     QCOMPARE(testProxy.format(), QString(""));
     QCOMPARE(testProxy.autoNestedName(), QString(""));
@@ -385,7 +388,7 @@ void TestKoProgressUpdater::testUndefinedStateTasks()
     progress.setAutoNestNames(true);
 
     QCOMPARE(testProxy.min(), 0);
-    QCOMPARE(testProxy.max(), 0);
+    QCOMPARE(testProxy.max(), 99);
     QCOMPARE(testProxy.value(), 0);
     QCOMPARE(testProxy.format(), QString(""));
     QCOMPARE(testProxy.autoNestedName(), QString(""));
@@ -460,7 +463,7 @@ void TestKoProgressUpdater::testNonStandardRange()
     progress.setAutoNestNames(true);
 
     QCOMPARE(testProxy.min(), 0);
-    QCOMPARE(testProxy.max(), 0);
+    QCOMPARE(testProxy.max(), 99);
     QCOMPARE(testProxy.value(), 0);
     QCOMPARE(testProxy.format(), QString(""));
     QCOMPARE(testProxy.autoNestedName(), QString(""));

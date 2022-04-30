@@ -80,6 +80,7 @@ bool KoSegmentGradient::loadFromDevice(QIODevice *dev, KisResourcesInterfaceSP r
     QByteArray data = dev->readAll();
 
     QTextStream fileContent(data, QIODevice::ReadOnly);
+    fileContent.setCodec("UTF-8");
     fileContent.setAutoDetectUnicode(true);
 
     QString header = fileContent.readLine();
@@ -121,7 +122,6 @@ bool KoSegmentGradient::loadFromDevice(QIODevice *dev, KisResourcesInterfaceSP r
     for (int i = 0; i < numSegments; i++) {
 
         QString segmentText = fileContent.readLine();
-        QTextStream segmentFields(&segmentText);
         QStringList values = segmentText.split(' ');
 
         qreal leftOffset = values[0].toDouble();
@@ -190,6 +190,7 @@ bool KoSegmentGradient::loadFromDevice(QIODevice *dev, KisResourcesInterfaceSP r
 bool KoSegmentGradient::saveToDevice(QIODevice *dev) const
 {
     QTextStream fileContent(dev);
+    fileContent.setCodec("UTF-8");
     fileContent << "GIMP Gradient\n";
     fileContent << "Name: " << name() << "\n";
     fileContent << m_segments.count() << "\n";
@@ -306,6 +307,9 @@ KoSegmentGradient KoSegmentGradient::fromXML(const QDomElement &elt)
         KoGradientSegmentEndpointType rightType = static_cast<KoGradientSegmentEndpointType>(KisDomUtils::toInt(segmentElt.attribute("end-type", "0")));
         gradient.createSegment(interpolation, colorInterpolation, startOffset, endOffset, middleOffset, left, right, leftType, rightType);
         segmentElt = segmentElt.nextSiblingElement("segment");
+    }
+    if (!gradient.segments().isEmpty()) {
+        gradient.setValid(true);
     }
     return gradient;
 }
@@ -859,10 +863,23 @@ qreal KoGradientSegment::SphereDecreasingInterpolationStrategy::valueAt(qreal t,
 void KoSegmentGradient::createSegment(int interpolation, int colorInterpolation, double startOffset, double endOffset, double middleOffset, const QColor & leftColor, const QColor & rightColor,
                                       KoGradientSegmentEndpointType leftType, KoGradientSegmentEndpointType rightType)
 {
+    createSegment(interpolation
+                  , colorInterpolation
+                  , startOffset
+                  , endOffset
+                  , middleOffset
+                  , KoColor(leftColor, colorSpace())
+                  , KoColor(rightColor, colorSpace())
+                  , leftType
+                  , rightType);
+
+}
+
+void KoSegmentGradient::createSegment(int interpolation, int colorInterpolation, double startOffset, double endOffset, double middleOffset, const KoColor &leftColor, const KoColor &rightColor, KoGradientSegmentEndpointType leftType, KoGradientSegmentEndpointType rightType)
+{
     KoGradientSegmentEndpoint left(startOffset, KoColor(leftColor, colorSpace()), leftType);
     KoGradientSegmentEndpoint right(endOffset, KoColor(rightColor, colorSpace()), rightType);
     pushSegment(new KoGradientSegment(interpolation, colorInterpolation, left, right, middleOffset));
-
 }
 
 const QList<double> KoSegmentGradient::getHandlePositions() const
@@ -1092,6 +1109,11 @@ void KoSegmentGradient::setSegments(const QList<KoGradientSegment*> &segments)
                 segment->middleOffset()
             );
         m_segments.append(newSegment);
+    }
+    if (!m_segments.isEmpty()) {
+        setValid(true);
+    } else {
+        setValid(false);
     }
     updatePreview();
 }

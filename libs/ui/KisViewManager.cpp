@@ -33,6 +33,7 @@
 #include <QObject>
 #include <QPoint>
 #include <QPrintDialog>
+#include <QPushButton>
 #include <QRect>
 #include <QScrollBar>
 #include <QStatusBar>
@@ -125,6 +126,10 @@
 
 #include "kis_filter_configuration.h"
 
+#ifdef Q_OS_WIN
+#include "KisWindowsPackageUtils.h"
+#endif
+
 class BlockingUserInputEventFilter : public QObject
 {
     bool eventFilter(QObject *watched, QEvent *event) override
@@ -148,20 +153,6 @@ public:
 
     KisViewManagerPrivate(KisViewManager *_q, KActionCollection *_actionCollection, QWidget *_q_parent)
         : filterManager(_q)
-        , createTemplate(0)
-        , saveIncremental(0)
-        , saveIncrementalBackup(0)
-        , openResourcesDirectory(0)
-        , rotateCanvasRight(0)
-        , rotateCanvasLeft(0)
-        , resetCanvasRotation(0)
-        , wrapAroundAction(0)
-        , levelOfDetailAction(0)
-        , showRulersAction(0)
-        , rulersTrackMouseAction(0)
-        , zoomTo100pct(0)
-        , zoomIn(0)
-        , zoomOut(0)
         , selectionManager(_q)
         , statusBar(_q)
         , controlFrame(_q, _q_parent)
@@ -171,42 +162,39 @@ public:
         , canvasControlsManager(_q)
         , paintingAssistantsManager(_q)
         , actionManager(_q, _actionCollection)
-        , mainWindow(0)
-        , showFloatingMessage(true)
-        , currentImageView(0)
         , canvasResourceProvider(_q)
         , canvasResourceManager()
         , guiUpdateCompressor(30, KisSignalCompressor::POSTPONE, _q)
         , actionCollection(_actionCollection)
         , mirrorManager(_q)
         , inputManager(_q)
-        , actionAuthor(0)
-        , showPixelGrid(0)
     {
         KisViewManager::initializeResourceManager(&canvasResourceManager);
     }
 
 public:
     KisFilterManager filterManager;
-    KisAction *createTemplate;
-    KisAction *createCopy;
-    KisAction *saveIncremental;
-    KisAction *saveIncrementalBackup;
-    KisAction *openResourcesDirectory;
-    KisAction *rotateCanvasRight;
-    KisAction *rotateCanvasLeft;
-    KisAction *resetCanvasRotation;
-    KisAction *wrapAroundAction;
-    KisAction *levelOfDetailAction;
-    KisAction *showRulersAction;
-    KisAction *rulersTrackMouseAction;
-    KisAction *zoomTo100pct;
-    KisAction *zoomIn;
-    KisAction *zoomOut;
-    KisAction *softProof;
-    KisAction *gamutCheck;
-    KisAction *toggleFgBg;
-    KisAction *resetFgBg;
+    KisAction *createTemplate {nullptr};
+    KisAction *createCopy {nullptr};
+    KisAction *saveIncremental {nullptr};
+    KisAction *saveIncrementalBackup {nullptr};
+    KisAction *openResourcesDirectory {nullptr};
+    KisAction *rotateCanvasRight {nullptr};
+    KisAction *rotateCanvasLeft {nullptr};
+    KisAction *resetCanvasRotation {nullptr};
+    KisAction *wrapAroundAction {nullptr};
+    KisAction *levelOfDetailAction {nullptr};
+    KisAction *showRulersAction {nullptr};
+    KisAction *rulersTrackMouseAction {nullptr};
+    KisAction *zoomTo100pct {nullptr};
+    KisAction *zoomIn {nullptr};
+    KisAction *zoomOut {nullptr};
+    KisAction *toggleZoomToFit {nullptr};
+    KisAction *softProof {nullptr};
+    KisAction *gamutCheck {nullptr};
+    KisAction *toggleFgBg {nullptr};
+    KisAction *resetFgBg {nullptr};
+    KisAction *toggleBrushOutline {nullptr};
 
     KisSelectionManager selectionManager;
     KisGuidesManager guidesManager;
@@ -224,20 +212,20 @@ public:
     KisDecorationsManager paintingAssistantsManager;
     BlockingUserInputEventFilter blockingEventFilter;
     KisActionManager actionManager;
-    QMainWindow* mainWindow;
+    QMainWindow* mainWindow {nullptr};
     QPointer<KisFloatingMessage> savedFloatingMessage;
-    bool showFloatingMessage;
+    bool showFloatingMessage {true};
     QPointer<KisView> currentImageView;
     KisCanvasResourceProvider canvasResourceProvider;
     KoCanvasResourceProvider canvasResourceManager;
     KisSignalCompressor guiUpdateCompressor;
-    KActionCollection *actionCollection;
+    KActionCollection *actionCollection {nullptr};
     KisMirrorManager mirrorManager;
     KisInputManager inputManager;
 
     KisSignalAutoConnectionsStore viewConnections;
-    KSelectAction *actionAuthor; // Select action for author profile.
-    KisAction *showPixelGrid;
+    KSelectAction *actionAuthor {nullptr}; // Select action for author profile.
+    KisAction *showPixelGrid {nullptr};
 
     QByteArray canvasState;
 #if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
@@ -276,6 +264,11 @@ KisViewManager::KisViewManager(QWidget *parent, KActionCollection *_actionCollec
                 new KoProgressUpdater(d->persistentUnthreadedProgressUpdater,
                                       KoProgressUpdater::Unthreaded));
     d->persistentUnthreadedProgressUpdaterRouter->setAutoNestNames(true);
+    d->persistentUnthreadedProgressUpdaterRouter->start();
+
+    // just a clumsy way to mark the updater as completed, the subtask will
+    // be automatically deleted on completion...
+    d->persistentUnthreadedProgressUpdaterRouter->startSubtask()->setProgress(100);
 
     d->controlFrame.setup(parent);
 
@@ -339,6 +332,8 @@ void KisViewManager::initializeResourceManager(KoCanvasResourceProvider *resourc
     resourceManager->addDerivedResourceConverter(toQShared(new KisEffectiveCompositeOpResourceConverter));
     resourceManager->addDerivedResourceConverter(toQShared(new KisOpacityResourceConverter));
     resourceManager->addDerivedResourceConverter(toQShared(new KisFlowResourceConverter));
+    resourceManager->addDerivedResourceConverter(toQShared(new KisFadeResourceConverter));
+    resourceManager->addDerivedResourceConverter(toQShared(new KisScatterResourceConverter));
     resourceManager->addDerivedResourceConverter(toQShared(new KisSizeResourceConverter));
     resourceManager->addDerivedResourceConverter(toQShared(new KisLodAvailabilityResourceConverter));
     resourceManager->addDerivedResourceConverter(toQShared(new KisLodSizeThresholdResourceConverter));
@@ -431,7 +426,7 @@ void KisViewManager::setCurrentView(KisView *view)
         // Restore the last used brush preset, color and background color.
         if (first) {
             KisPaintOpPresetResourceServer * rserver = KisResourceServerProvider::instance()->paintOpPresetServer();
-            QString defaultPresetName = "b)_Basic-5_Size_Opacity";
+            const QString defaultPresetName = "b) Basic-5 Size Opacity";
 
             KisConfig cfg(true);
             QString lastPreset = cfg.readEntry("LastPreset", defaultPresetName);
@@ -483,6 +478,7 @@ void KisViewManager::setCurrentView(KisView *view)
         d->viewConnections.addUniqueConnection(d->zoomTo100pct, SIGNAL(triggered()), imageView->zoomManager(), SLOT(zoomTo100()));
         d->viewConnections.addUniqueConnection(d->zoomIn, SIGNAL(triggered()), imageView->zoomController()->zoomAction(), SLOT(zoomIn()));
         d->viewConnections.addUniqueConnection(d->zoomOut, SIGNAL(triggered()), imageView->zoomController()->zoomAction(), SLOT(zoomOut()));
+        d->viewConnections.addUniqueConnection(d->toggleZoomToFit, SIGNAL(triggered()), imageView->zoomManager(), SLOT(slotToggleZoomToFit()));
 
         d->viewConnections.addUniqueConnection(d->softProof, SIGNAL(toggled(bool)), view, SLOT(slotSoftProofing(bool)) );
         d->viewConnections.addUniqueConnection(d->gamutCheck, SIGNAL(toggled(bool)), view, SLOT(slotGamutCheck(bool)) );
@@ -740,6 +736,8 @@ void KisViewManager::createActions()
     d->zoomIn = actionManager()->createStandardAction(KStandardAction::ZoomIn, 0, "");
     d->zoomOut = actionManager()->createStandardAction(KStandardAction::ZoomOut, 0, "");
 
+    d->toggleZoomToFit = actionManager()->createAction("toggle_zoom_to_fit");
+
     d->actionAuthor  = new KSelectAction(KisIconUtils::loadIcon("im-user"), i18n("Active Author Profile"), this);
     connect(d->actionAuthor, SIGNAL(triggered(QString)), this, SLOT(changeAuthorProfile(QString)));
     actionCollection()->addAction("settings_active_author", d->actionAuthor);
@@ -753,6 +751,9 @@ void KisViewManager::createActions()
 
     d->resetFgBg =  actionManager()->createAction("reset_fg_bg");
     connect(d->resetFgBg, SIGNAL(triggered(bool)), this, SLOT(slotResetFgBg()));
+
+    d->toggleBrushOutline =  actionManager()->createAction("toggle_brush_outline");
+    connect(d->toggleBrushOutline, SIGNAL(triggered(bool)), this, SLOT(slotToggleBrushOutline()));
 
 }
 
@@ -1289,7 +1290,65 @@ void KisViewManager::toggleTabletLogger()
 
 void KisViewManager::openResourcesDirectory()
 {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(KisResourceLocator::instance()->resourceLocationBase()));
+    QString resourcePath = KisResourceLocator::instance()->resourceLocationBase();
+#ifdef Q_OS_WIN
+    if (KisWindowsPackageUtils::isRunningInPackage()) {
+        const QDir resourceDir(resourcePath);
+        const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        // FIXME: Actually check if the resource dir is inside roaming appdata?
+        if (resourceDir.absolutePath().compare(appData, Qt::CaseInsensitive) == 0) {
+            const QString privateAppData = KisWindowsPackageUtils::getPackageRoamingAppDataLocation();
+            if (!privateAppData.isEmpty()) {
+                // FIXME: Actually build the path based on the configured path relative to user RoamingAppData?
+                const QDir privateResourceDir(QDir::fromNativeSeparators(privateAppData) + '/' + qApp->applicationName());
+                if (privateResourceDir.exists()) {
+                    const auto pathToDisplay = [](const QString &path) {
+                        // Due to how Unicode word wrapping works, the string does not
+                        // wrap after backslashes in Qt 5.12. We don't want the path to
+                        // become too long, so we add a U+200B ZERO WIDTH SPACE to allow
+                        // wrapping. The downside is that we cannot let the user select
+                        // and copy the path because it now contains invisible unicode
+                        // code points.
+                        // See: https://bugreports.qt.io/browse/QTBUG-80892
+                        return QDir::toNativeSeparators(path).replace(QChar('\\'), QStringLiteral(u"\\\u200B"));
+                    };
+                    QMessageBox mbox(mainWindowAsQWidget());
+                    mbox.setIcon(QMessageBox::Information);
+                    mbox.setWindowTitle(i18nc("@title:window resource folder", "Open Resource Folder"));
+                    // Similar text is also used in kis_dlg_preferences.cc
+                    mbox.setText(i18nc("@info resource folder",
+                        "<p>You are using the Microsoft Store package version of Krita. "
+                        "Even though Krita can be configured to place resources under the "
+                        "user AppData location, Windows may actually store the files "
+                        "inside a private app location.</p>\n"
+                        "<p>You should check both locations to determine where "
+                        "the files are located.</p>\n"
+                        "<p><b>User AppData</b>:<br/>\n"
+                        "%1</p>\n"
+                        "<p><b>Private app location</b>:<br/>\n"
+                        "%2</p>",
+                        pathToDisplay(resourceDir.absolutePath()),
+                        pathToDisplay(privateResourceDir.absolutePath())
+                    ));
+                    mbox.setTextInteractionFlags(Qt::NoTextInteraction);
+                    const auto *btnOpenUserAppData = mbox.addButton(i18nc("@action:button resource folder", "Open in &user AppData"), QMessageBox::AcceptRole);
+                    const auto *btnOpenPrivateAppData = mbox.addButton(i18nc("@action:button resource folder", "Open in &private app location"), QMessageBox::AcceptRole);
+                    mbox.addButton(QMessageBox::Close);
+                    mbox.setDefaultButton(QMessageBox::Close);
+                    mbox.exec();
+                    if (mbox.clickedButton() == btnOpenPrivateAppData) {
+                        resourcePath = privateResourceDir.absolutePath();
+                    } else if (mbox.clickedButton() == btnOpenUserAppData) {
+                        // no-op: resourcePath = resourceDir.absolutePath();
+                    } else {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+#endif
+    QDesktopServices::openUrl(QUrl::fromLocalFile(resourcePath));
 }
 
 void KisViewManager::updateIcons()
@@ -1341,6 +1400,11 @@ void KisViewManager::showFloatingMessage(const QString &message, const QIcon& ic
 KisMainWindow *KisViewManager::mainWindow() const
 {
     return qobject_cast<KisMainWindow*>(d->mainWindow);
+}
+
+QWidget *KisViewManager::mainWindowAsQWidget() const
+{
+    return mainWindow();
 }
 
 
@@ -1472,6 +1536,25 @@ void KisViewManager::slotResetFgBg()
     // see a comment in slotToggleFgBg()
     d->canvasResourceManager.setBackgroundColor(KoColor(Qt::white, KoColorSpaceRegistry::instance()->rgb8()));
     d->canvasResourceManager.setForegroundColor(KoColor(Qt::black, KoColorSpaceRegistry::instance()->rgb8()));
+}
+
+void KisViewManager::slotToggleBrushOutline()
+{
+    KisConfig cfg(true);
+
+    OutlineStyle style;
+
+    if (cfg.newOutlineStyle() != OUTLINE_NONE) {
+        style = OUTLINE_NONE;
+        cfg.setLastUsedOutlineStyle(cfg.newOutlineStyle());
+    } else {
+        style = cfg.lastUsedOutlineStyle();
+        cfg.setLastUsedOutlineStyle(OUTLINE_NONE);
+    }
+
+    cfg.setNewOutlineStyle(style);
+
+    emit brushOutlineToggled();
 }
 
 void KisViewManager::slotResetRotation()

@@ -43,11 +43,11 @@ struct KisCurrentOutlineFetcher::Private {
     QScopedPointer<KisPressureMirrorOption> mirrorOption;
     QScopedPointer<KisPressureSharpnessOption> sharpnessOption;
 
-    bool isDirty;
+    bool isDirty {false};
     QElapsedTimer lastUpdateTime;
 
-    qreal lastRotationApplied;
-    qreal lastSizeApplied;
+    qreal lastRotationApplied {0.0};
+    qreal lastSizeApplied {1.0};
     MirrorProperties lastMirrorApplied;
 };
 
@@ -157,8 +157,10 @@ QPainterPath KisCurrentOutlineFetcher::fetchOutline(const KisPaintInformation &i
 
     QPointF pos = info.pos();
     if (d->sharpnessOption) {
-        qint32 x = 0, y = 0;
-        qreal subPixelX = 0.0, subPixelY = 0.0;
+        qint32 x = 0;
+        qint32 y = 0;
+        qreal subPixelX = 0.0;
+        qreal subPixelY = 0.0;
         d->sharpnessOption->apply(info, pos - hotSpot, x, y, subPixelX, subPixelY);
         pos = QPointF(x + subPixelX, y + subPixelY) + hotSpot;
     }

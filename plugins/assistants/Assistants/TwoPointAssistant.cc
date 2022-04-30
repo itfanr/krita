@@ -178,12 +178,13 @@ void TwoPointAssistant::drawAssistant(QPainter& gc, const QRectF& updateRect, co
     QPointF mousePos(0,0);
 
     const QTransform initialTransform = converter->documentToWidgetTransform();
-    bool isEditing = canvas->paintingAssistantsDecoration()->isEditingAssistants();
+    bool isEditing = false;
     bool showLocal = isLocal() && handles().size() == 5;
 
     if (canvas){
         //simplest, cheapest way to get the mouse-position//
-        mousePos= canvas->canvasWidget()->mapFromGlobal(QCursor::pos());
+        mousePos = canvas->canvasWidget()->mapFromGlobal(QCursor::pos());
+        isEditing = canvas->paintingAssistantsDecoration()->isEditingAssistants();
         m_canvas = canvas;
     }
     else {
@@ -444,7 +445,7 @@ KisPaintingAssistantHandleSP TwoPointAssistant::firstLocalHandle() const
     if (handles().size() > LocalFirstHandle) {
         return handles().at(LocalFirstHandle);
     } else {
-        return 0;
+        return nullptr;
     }
 }
 
@@ -453,7 +454,7 @@ KisPaintingAssistantHandleSP TwoPointAssistant::secondLocalHandle() const
     if (handles().size() > LocalSecondHandle) {
         return handles().at(LocalSecondHandle);
     } else {
-        return 0;
+        return nullptr;
     }
 }
 

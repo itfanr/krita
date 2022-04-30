@@ -97,18 +97,19 @@ KisApplicationArguments::KisApplicationArguments(const QApplication &app)
     parser.addPositionalArgument(QLatin1String("[file(s)]"), i18n("File(s) or URL(s) to open"));
 
     QStringList filteredArgs;
-#ifdef Q_OS_WIN
     {
         auto checkIsIgnoreEpic = [](const QString &arg) {
             // List according to https://dev.epicgames.com/docs/services/en-US/Interfaces/Auth/index.html#epicgameslauncher
             static const QStringList epicIgnoreArgsStart = {
                 QStringLiteral("AUTH_PASSWORD="),
+                QStringLiteral("AUTH_LOGIN="),
                 QStringLiteral("AUTH_TYPE="),
                 QStringLiteral("epicapp="),
                 QStringLiteral("epicenv="),
                 QStringLiteral("epicusername="),
                 QStringLiteral("epicuserid="),
                 QStringLiteral("epiclocale="),
+                QStringLiteral("epicsandboxid="),
             };
             static const QStringList epicIgnoreArgsExact = {
                 QStringLiteral("EpicPortal"),
@@ -148,9 +149,6 @@ KisApplicationArguments::KisApplicationArguments(const QApplication &app)
             }
         }
     }
-#else // !defined(Q_OS_WIN)
-    filteredArgs = app.arguments();
-#endif // Q_OS_WIN
 
     parser.process(filteredArgs);
 

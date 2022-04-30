@@ -117,7 +117,6 @@ KisToolTransform::KisToolTransform(KoCanvasBase * canvas)
     Q_ASSERT(m_canvas);
 
     setObjectName("tool_transform");
-    useCursor(KisCursor::selectCursor());
     m_optionsWidget = 0;
 
     warpAction = new KisAction(i18nc("Warp Transform Tab Label", "Warp"));
@@ -1336,12 +1335,24 @@ void KisToolTransform::setScaleX(double scale)
 
 void KisToolTransform::setTranslateY(double translation)
 {
-    m_optionsWidget->slotSetTranslateY(translation);
+    TransformToolMode mode = transformMode();
+
+    if (m_strokeId && (mode == FreeTransformMode || mode == PerspectiveTransformMode)) {
+        m_currentArgs.setTransformedCenter(QPointF(translateX(), translation));
+        currentStrategy()->externalConfigChanged();
+        updateOptionWidget();
+    }
 }
 
 void KisToolTransform::setTranslateX(double translation)
 {
-    m_optionsWidget->slotSetTranslateX(translation);
+    TransformToolMode mode = transformMode();
+
+    if (m_strokeId && (mode == FreeTransformMode || mode == PerspectiveTransformMode)) {
+        m_currentArgs.setTransformedCenter(QPointF(translation, translateY()));
+        currentStrategy()->externalConfigChanged();
+        updateOptionWidget();
+    }
 }
 
 QList<QAction *> KisToolTransformFactory::createActionsImpl()

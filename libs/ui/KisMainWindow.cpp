@@ -46,6 +46,7 @@
 #include <QScreen>
 #include <QAction>
 #include <QWindow>
+#include <QTemporaryDir>
 #include <QScrollArea>
 #include <kactioncollection.h>
 #include <kactionmenu.h>
@@ -151,6 +152,7 @@
 #include "KisNodeActivationActionCreatorVisitor.h"
 #include "KisUiFont.h"
 #include <KisResourceUserOperations.h>
+#include "KisRecentFilesManager.h"
 
 
 #include <mutex>
@@ -213,10 +215,10 @@ public:
         qDeleteAll(toolbarList);
     }
 
-    KisMainWindow *q {0};
+    KisMainWindow *q {nullptr};
     QUuid id;
 
-    KisViewManager *viewManager {0};
+    KisViewManager *viewManager {nullptr};
 
     QPointer<KisView> activeView;
 
@@ -225,48 +227,47 @@ public:
     bool firstTime {true};
     bool windowSizeDirty {false};
 
-    KisAction *showDocumentInfo {0};
-    KisAction *saveAction {0};
-    KisAction *saveActionAs {0};
-    KisAction *importAnimation {0};
-    KisAction *importVideoAnimation {0};
-    KisAction *renderAnimation {0};
-    KisAction *renderAnimationAgain {0};
-    KisAction *closeAll {0};
-    KisAction *importFile {0};
-    KisAction *exportFile {0};
-    KisAction *exportFileAdvance {0};
-    KisAction *undo {0};
-    KisAction *redo {0};
-    KisAction *newWindow {0};
-    KisAction *close {0};
-    KisAction *mdiCascade {0};
-    KisAction *mdiTile {0};
-    KisAction *mdiNextWindow {0};
-    KisAction *mdiPreviousWindow {0};
-    KisAction *toggleDockers {0};
-    KisAction *resetConfigurations {0};
-    KisAction *toggleDockerTitleBars {0};
-    KisAction *toggleDetachCanvas {0};
-    KisAction *fullScreenMode {0};
-    KisAction *showSessionManager {0};
-    KisAction *commandBarAction {0};
+    KisAction *showDocumentInfo {nullptr};
+    KisAction *saveAction {nullptr};
+    KisAction *saveActionAs {nullptr};
+    KisAction *importAnimation {nullptr};
+    KisAction *importVideoAnimation {nullptr};
+    KisAction *renderAnimation {nullptr};
+    KisAction *renderAnimationAgain {nullptr};
+    KisAction *closeAll {nullptr};
+    KisAction *importFile {nullptr};
+    KisAction *exportFile {nullptr};
+    KisAction *exportFileAdvance {nullptr};
+    KisAction *undo {nullptr};
+    KisAction *redo {nullptr};
+    KisAction *newWindow {nullptr};
+    KisAction *close {nullptr};
+    KisAction *mdiCascade {nullptr};
+    KisAction *mdiTile {nullptr};
+    KisAction *mdiNextWindow {nullptr};
+    KisAction *mdiPreviousWindow {nullptr};
+    KisAction *toggleDockers {nullptr};
+    KisAction *resetConfigurations {nullptr};
+    KisAction *toggleDockerTitleBars {nullptr};
+    KisAction *toggleDetachCanvas {nullptr};
+    KisAction *fullScreenMode {nullptr};
+    KisAction *showSessionManager {nullptr};
+    KisAction *commandBarAction {nullptr};
     KisAction *expandingSpacers[2];
 
-    KActionMenu *styleMenu;
-    QActionGroup* styleActions;
+    KActionMenu *styleMenu {nullptr};
+    QActionGroup* styleActions {nullptr};
     QMap<QString, QAction*> actionMap;
 
-    KActionMenu *dockWidgetMenu;
-    KActionMenu *windowMenu;
-    KActionMenu *documentMenu;
-    KActionMenu *workspaceMenu;
+    KActionMenu *dockWidgetMenu {nullptr};
+    KActionMenu *windowMenu {nullptr};
+    KActionMenu *documentMenu {nullptr};
+    KActionMenu *workspaceMenu {nullptr};
 
-    KHelpMenu *helpMenu  {0};
+    KHelpMenu *helpMenu  {nullptr};
 
-    KRecentFilesAction *recentFiles {0};
-    KisRecentDocumentsModelWrapper recentFilesModel;
-    KisResourceModel *workspacemodel {0};
+    KRecentFilesAction *recentFiles {nullptr};
+    KisResourceModel *workspacemodel {nullptr};
 
     QScopedPointer<KisUndoActionsUpdateManager> undoActionsUpdateManager;
 
@@ -274,23 +275,23 @@ public:
 
     QMap<QString, QDockWidget *> dockWidgetsMap;
     QByteArray dockerStateBeforeHiding;
-    KoToolDocker *toolOptionsDocker {0};
+    KoToolDocker *toolOptionsDocker {nullptr};
 
-    QCloseEvent *deferredClosingEvent {0};
+    QCloseEvent *deferredClosingEvent {nullptr};
 
-    Digikam::ThemeManager *themeManager {0};
+    Digikam::ThemeManager *themeManager {nullptr};
 
-    QScrollArea *welcomeScroller {0};
-    KisWelcomePageWidget *welcomePage {0};
+    QScrollArea *welcomeScroller {nullptr};
+    KisWelcomePageWidget *welcomePage {nullptr};
 
 
-    QStackedWidget *widgetStack {0};
+    QStackedWidget *widgetStack {nullptr};
 
-    QMdiArea *mdiArea;
-    QMdiSubWindow *activeSubWindow  {0};
-    KisSignalMapper *windowMapper;
-    KisSignalMapper *documentMapper;
-    KisCanvasWindow *canvasWindow {0};
+    QMdiArea *mdiArea {nullptr};
+    QMdiSubWindow *activeSubWindow  {nullptr};
+    KisSignalMapper *windowMapper {nullptr};
+    KisSignalMapper *documentMapper {nullptr};
+    KisCanvasWindow *canvasWindow {nullptr};
 
     QByteArray lastExportedFormat;
     QScopedPointer<KisSignalCompressorWithParam<int> > tabSwitchCompressor;
@@ -301,7 +302,7 @@ public:
     QUuid workspaceBorrowedBy;
     KisSignalAutoConnectionsStore screenConnectionsStore;
 
-    KateCommandBar *commandBar {0};
+    KateCommandBar *commandBar {nullptr};
 
     KisActionManager * actionManager() {
         return viewManager->actionManager();
@@ -471,26 +472,7 @@ KisMainWindow::KisMainWindow(QUuid uuid)
     // the welcome screen needs to grab actions...so make sure this line goes after the createAction() so they exist
     d->welcomePage->setMainWindow(this);
 
-    connect(&d->recentFilesModel, &KisRecentDocumentsModelWrapper::sigInvalidDocumentForIcon, [this](QUrl url) {
-        this->removeRecentUrl(url);
-    });
-    connect(&d->recentFilesModel.model(), &QStandardItemModel::itemChanged, [this](QStandardItem *item) {
-        QUrl url = item->data().toUrl();
-        QIcon icon = item->icon();
-        if (url.isValid() && !icon.isNull()) {
-            d->recentFiles->setUrlIcon(url, icon);
-        }
-    });
-    connect(&d->recentFilesModel.model(), &QAbstractItemModel::rowsInserted, [this](const QModelIndex &/*parent*/, int first, int last) {
-        for (int i = first; i <= last; i++) {
-            QStandardItem *item = d->recentFilesModel.model().item(i);
-            QUrl url = item->data().toUrl();
-            QIcon icon = item->icon();
-            if (url.isValid() && !icon.isNull()) {
-                d->recentFiles->setUrlIcon(url, icon);
-            }
-        }
-    });
+    d->recentFiles->setRecentFilesModel(&KisRecentDocumentsModelWrapper::instance()->model());
 
     setAutoSaveSettings(d->windowStateConfig, false);
 
@@ -644,7 +626,6 @@ KisMainWindow::KisMainWindow(QUuid uuid)
         // load customized tab style
         customizeTabBar();
     }
-
 }
 
 KisMainWindow::~KisMainWindow()
@@ -933,79 +914,9 @@ void KisMainWindow::setReadWrite(bool readwrite)
     updateCaption();
 }
 
-void KisMainWindow::addRecentURL(const QUrl &url, const QUrl &oldUrl)
-{
-    // Add entry to recent documents list
-    // (call coming from KisDocument because it must work with cmd line, template dlg, file/open, etc.)
-    if (!url.isEmpty()) {
-        bool ok = true;
-        if (url.isLocalFile()) {
-            QString path = url.adjusted(QUrl::StripTrailingSlash).toLocalFile();
-            const QStringList tmpDirs = KoResourcePaths::resourceDirs("tmp");
-            for (QStringList::ConstIterator it = tmpDirs.begin() ; ok && it != tmpDirs.end() ; ++it) {
-                if (path.contains(*it)) {
-                    ok = false; // it's in the tmp resource
-                }
-            }
-
-            const QStringList templateDirs = KoResourcePaths::findDirs("templates");
-            for (QStringList::ConstIterator it = templateDirs.begin() ; ok && it != templateDirs.end() ; ++it) {
-                if (path.contains(*it)) {
-                    ok = false; // it's in the templates directory.
-                    break;
-                }
-            }
-        }
-        if (ok) {
-            if (!oldUrl.isEmpty()) {
-                d->recentFiles->removeUrl(oldUrl);
-            }
-            d->recentFiles->addUrl(url);
-        }
-        saveRecentFiles();
-        d->recentFilesModel.setFiles(recentFilesUrls(), devicePixelRatioF());
-    }
-}
-
-void KisMainWindow::saveRecentFiles()
-{
-    // Save list of recent files
-    KSharedConfigPtr config =  KSharedConfig::openConfig();
-    d->recentFiles->saveEntries(config->group("RecentFiles"));
-    config->sync();
-
-    // Tell all windows to reload their list, after saving
-    // Doesn't work multi-process, but it's a start
-    Q_FOREACH (KisMainWindow *mw, KisPart::instance()->mainWindows()) {
-        if (mw != this) {
-            mw->reloadRecentFileList();
-        }
-    }
-}
-
-QList<QUrl> KisMainWindow::recentFilesUrls()
-{
-    return d->recentFiles->urls();
-}
-
 void KisMainWindow::clearRecentFiles()
 {
-    d->recentFiles->clear();
-    d->recentFilesModel.setFiles(recentFilesUrls(), devicePixelRatioF());
-}
-
-void KisMainWindow::removeRecentUrl(const QUrl &url)
-{
-    d->recentFiles->removeUrl(url);
-    KSharedConfigPtr config =  KSharedConfig::openConfig();
-    d->recentFiles->saveEntries(config->group("RecentFiles"));
-    config->sync();
-}
-
-void KisMainWindow::reloadRecentFileList()
-{
-    d->recentFiles->loadEntries(KSharedConfig::openConfig()->group("RecentFiles"));
-    d->recentFilesModel.setFiles(recentFilesUrls(), devicePixelRatioF());
+    KisRecentFilesManager::instance()->clear();
 }
 
 void KisMainWindow::updateCaption()
@@ -1082,8 +993,7 @@ bool KisMainWindow::openDocument(const QString &path, OpenFlags flags)
         if (!(flags & BatchMode)) {
             QMessageBox::critical(qApp->activeWindow(), i18nc("@title:window", "Krita"), i18n("The file %1 does not exist.", path));
         }
-        d->recentFiles->removeUrl(QUrl::fromLocalFile(path)); //remove the file from the recent-opened-file-list
-        saveRecentFiles();
+        KisRecentFilesManager::instance()->remove(QUrl::fromLocalFile(path)); //remove the file from the recent-opened-file-list
         return false;
     }
     return openDocumentInternal(path, flags);
@@ -1603,11 +1513,6 @@ void KisMainWindow::setActiveView(KisView* view)
     emit activeViewChanged();
 }
 
-KisRecentDocumentsModelWrapper *KisMainWindow::recentFilesModel()
-{
-    return &d->recentFilesModel;
-}
-
 void KisMainWindow::dragMove(QDragMoveEvent * event)
 {
     QTabBar *tabBar = d->findTabBarHACK();
@@ -2066,17 +1971,19 @@ void KisMainWindow::importVideoAnimation()
     KisDlgImportVideoAnimation dlg(this, activeView());
 
     if (dlg.exec() == QDialog::Accepted) {
-        QStringList files = dlg.renderFrames();
+        const QTemporaryDir outputLocation(QDir::tempPath() + QDir::separator() + "krita" + QDir::separator() + "import_files");
+        RenderedFrames renderedFrames = dlg.renderFrames(QDir(outputLocation.path()));
+        dbgFile << "Frames rendered to directory: " << outputLocation.path();
         QStringList documentInfoList = dlg.documentInfo();
 
-        if (files.isEmpty()) return;
+        if (renderedFrames.isEmpty()) return;
         
-        dbgFile << "Animation Import options:" << documentInfoList;
+        dbgFile << "Animation Import options: " << documentInfoList;
 
         int firstFrame = 0;
         const int step = documentInfoList[0].toInt();
         const int fps = documentInfoList[1].toInt();
-        const int totalFrames = files.size() * step;
+        const int totalFrames = renderedFrames.framesNeedRelocation() ? (renderedFrames.renderedFrameTargetTimes.last() + 1) : renderedFrames.size() * step;
         const QString name = QFileInfo(documentInfoList[3]).fileName();
         const bool useCurrentDocument = documentInfoList[4].toInt();
         bool useDocumentColorSpace = false;
@@ -2114,7 +2021,6 @@ void KisMainWindow::importVideoAnimation()
 
             if (!document->newImage(name, width, height, cs, bgColor, KisConfig::RASTER_LAYER, 1, "", double(resolution / 72) )) {
                 QMessageBox::critical(qApp->activeWindow(), i18nc("@title:window", "Krita"), i18n("Failed to create new document. Animation import aborted."));
-                dlg.cleanupWorkDir();
                 return;
             }
 
@@ -2130,9 +2036,7 @@ void KisMainWindow::importVideoAnimation()
         KoUpdaterPtr updater =
                 !document->fileBatchMode() ? viewManager()->createUnthreadedUpdater(i18n("Import frames")) : 0;
         KisAnimationImporter importer(document->image(), updater);
-        KisImportExportErrorCode status = importer.import(files, firstFrame, step, false, false, 0, useDocumentColorSpace);
-
-        dlg.cleanupWorkDir();
+        KisImportExportErrorCode status = importer.import(renderedFrames.renderedFrameFiles, firstFrame, step, false, false, 0, useDocumentColorSpace, renderedFrames.renderedFrameTargetTimes);
 
         if (!status.isOk() && !status.isInternalError()) {
             QString msg = status.errorMessage();
@@ -2166,6 +2070,8 @@ void KisMainWindow::renderAnimation()
 
 void KisMainWindow::renderAnimationAgain()
 {
+    if (!activeView()) return;
+
     KisImageSP image = viewManager()->image();
 
     if (!image) return;
@@ -2246,11 +2152,6 @@ void KisMainWindow::viewFullscreen(bool fullScreen)
     d->fullScreenMode->setChecked(isFullScreen());
 }
 
-void KisMainWindow::setMaxRecentItems(uint _number)
-{
-    d->recentFiles->setMaxItems(_number);
-}
-
 QDockWidget* KisMainWindow::createDockWidget(KoDockFactoryBase* factory)
 {
     QDockWidget* dockWidget = 0;
@@ -2258,7 +2159,7 @@ QDockWidget* KisMainWindow::createDockWidget(KoDockFactoryBase* factory)
 
     if (!d->dockWidgetsMap.contains(factory->id())) {
         dockWidget = factory->createDockWidget();
-        KAcceleratorManager::setNoAccel(dockWidget->titleBarWidget());
+        KAcceleratorManager::setNoAccel(dockWidget);
 
         // It is quite possible that a dock factory cannot create the dock; don't
         // do anything in that case.
@@ -2566,20 +2467,17 @@ void KisMainWindow::updateWindowMenu()
             return;
         }
 
-        auto rserver = KisResourceServerProvider::instance()->workspaceServer();
-
         KisWorkspaceResourceSP workspace(new KisWorkspaceResource(""));
         workspace->setDockerState(m_this->saveState());
+        workspace->setImage(layoutThumbnail());
+        workspace->setValid(true);
 
         // this line must happen before we save the workspace to resource folder or other places
         // because it mostly just triggers palettes to be saved into the workspace
         d->viewManager->canvasResourceProvider()->notifySavingWorkspace(workspace);
         workspace->setValid(true);
-        QString saveLocation = rserver->saveLocation();
 
-        QFileInfo fileInfo(saveLocation + "/" + name + workspace->defaultFileExtension());
-
-        workspace->setFilename(fileInfo.fileName());
+        workspace->setFilename(name.replace(" ", "_") + workspace->defaultFileExtension());
         workspace->setName(name);
 
         KisResourceUserOperations::addResourceWithUserInput(this, workspace);
@@ -2606,11 +2504,12 @@ void KisMainWindow::updateWindowMenu()
         QPointer<KisView>child = qobject_cast<KisView*>(windows.at(i)->widget());
         if (child && child->document()) {
             QString text;
+            const QString elidedPath = fontMetrics.elidedText(child->document()->path(), Qt::ElideMiddle, fileStringWidth);
             if (i < 9) {
-                text = i18n("&%1 %2", i + 1, fontMetrics.elidedText(child->document()->path(), Qt::ElideMiddle, fileStringWidth));
+                text = i18nc("@item:inmenu opened document, %1=index %2=document path", "&%1 %2", i + 1, elidedPath);
             }
             else {
-                text = i18n("%1 %2", i + 1, fontMetrics.elidedText(child->document()->path(), Qt::ElideMiddle, fileStringWidth));
+                text = i18nc("@item:inmenu opened document, %1=index %2=document path", "%1 %2", i + 1, elidedPath);
             }
 
             QAction *action  = menu->addAction(text);
@@ -2625,8 +2524,6 @@ void KisMainWindow::updateWindowMenu()
     bool showMdiArea = windows.count( ) > 0;
     if (!showMdiArea) {
         showWelcomeScreen(true); // see workaround in function in header
-        // keep the recent file list updated when going back to welcome screen
-        reloadRecentFileList();
     }
 
     // enable/disable the toolbox docker if there are no documents open
@@ -2849,9 +2746,6 @@ void KisMainWindow::createActions()
     d->fullScreenMode = actionManager->createStandardAction(KStandardAction::FullScreen, this, SLOT(viewFullscreen(bool)));
 
     d->recentFiles = KStandardAction::openRecent(this, SLOT(slotFileOpenRecent(QUrl)), actionCollection());
-    connect(d->recentFiles, SIGNAL(recentListCleared()), this, SLOT(saveRecentFiles()));
-    KSharedConfigPtr configPtr =  KSharedConfig::openConfig();
-    d->recentFiles->loadEntries(configPtr->group("RecentFiles"));
 
     d->saveAction = actionManager->createStandardAction(KStandardAction::Save, this, SLOT(slotFileSave()));
     d->saveAction->setActivationFlags(KisAction::ACTIVE_IMAGE);

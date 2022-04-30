@@ -1,5 +1,6 @@
 /*
  * SPDX-FileCopyrightText: 2020 Ashwin Dhakaita <ashwingpdhakaita@gmail.com>
+ * SPDX-FileCopyrightText: 2021 L. E. Segovia <amy@amyspark.me>
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -25,6 +26,8 @@ class KisMyPaintOpOptionsWidget;
 class KisMyPaintOpOption : public KisPaintOpOption
 {
 public:
+    enum PaintopCategory { BASIC, AIRBRUSH, COLOR, SPEED, DABS, OPACITY, TRACKING, STROKE, SMUDGE, CUSTOM };
+
     KisMyPaintOpOption();
     ~KisMyPaintOpOption() override;
 
@@ -50,9 +53,9 @@ public:
     KisDoubleSliderSpinBox* opacitySlider();
 
 private:
-    KisMyPaintOpOptionsWidget *m_options;
+    KisMyPaintOpOptionsWidget *m_options {nullptr};
     QByteArray json;
-    float eraserVal;
+    float eraserVal {0.0};
 
 };
 
@@ -88,12 +91,12 @@ public:
 
 
 public:
-    float diameter;
-    float hardness;
-    float opacity;
-    float eraser;
-    float offset;
-    bool eraserMode;
+    float diameter {1.0};
+    float hardness {1.0};
+    float opacity {1.0};
+    float eraser {0.0};
+    float offset {0.0};
+    bool eraserMode {false};
     QByteArray json;
 
 };

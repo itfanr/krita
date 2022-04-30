@@ -25,36 +25,23 @@
 class Q_DECL_HIDDEN KisToneCurveWidget::Private
 {
 public:
- 
-    Private() :
-        profileDataAvailable(false),
-        needUpdatePixmap(false),
-        TRCGray(true),
-        xBias(0),
-        yBias(0),
-        pxcols(0),
-        pxrows(0),
-        gridside(0)
-        
-    {
-    }
     
-    bool            profileDataAvailable;
-    bool            needUpdatePixmap;
-    bool            TRCGray;
-    bool            TRCRGB;
+    bool            profileDataAvailable {false};
+    bool            needUpdatePixmap {false};
+    bool            TRCGray {true};
+    bool            TRCRGB {false};
  
-    int             xBias;
-    int             yBias;
-    int             pxcols;
-    int             pxrows;
+    int             xBias {0};
+    int             yBias {0};
+    int             pxcols {0};
+    int             pxrows {0};
 
     QPolygonF       ToneCurveGray;
     QPolygonF       ToneCurveRed;
     QPolygonF       ToneCurveGreen;
     QPolygonF       ToneCurveBlue;
  
-    double          gridside;
+    double          gridside {0.0};
  
     QPainter        painter;
     QPainter        painter2;
@@ -174,7 +161,9 @@ void KisToneCurveWidget::updatePixmap()
 {
     d->needUpdatePixmap = false;
     d->pixmap = QPixmap(size());
+    d->pixmap.setDevicePixelRatio(devicePixelRatioF());
     d->curvemap = QPixmap(size());
+    d->curvemap.setDevicePixelRatio(devicePixelRatioF());
     d->pixmap.fill(Qt::black);
     d->curvemap.fill(Qt::transparent);
 
@@ -341,11 +330,9 @@ void KisToneCurveWidget::paintEvent(QPaintEvent*)
     // draw prerendered tongue
     p.drawPixmap(0, 0, d->pixmap);
 }
- 
+
 void KisToneCurveWidget::resizeEvent(QResizeEvent* event)
 {
-    Q_UNUSED(event);
-    setMinimumWidth(height());
-    setMaximumWidth(height());
+    QWidget::resizeEvent(event);
     d->needUpdatePixmap = true;
 }

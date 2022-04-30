@@ -63,6 +63,7 @@ set(kritaui_LIB_SRCS
     dialogs/kis_dlg_stroke_selection_properties.cpp
     dialogs/kis_dlg_image_properties.cc
     dialogs/kis_dlg_layer_properties.cc
+    dialogs/kis_dlg_paste_format.cpp
     dialogs/kis_dlg_preferences.cc
     dialogs/slider_and_spin_box_sync.cpp
     dialogs/kis_dlg_layer_style.cpp
@@ -74,6 +75,7 @@ set(kritaui_LIB_SRCS
     dialogs/KisDlgChangeCloneSource.cpp
     dialogs/KisRecoverNamedAutosaveDialog.cpp
     dialogs/KisDlgSavePreset.cpp
+    dialogs/kis_dlg_missing_color_profile.cpp
 
     flake/kis_node_dummies_graph.cpp
     flake/kis_dummies_facade_base.cpp
@@ -178,6 +180,7 @@ set(kritaui_LIB_SRCS
     opengl/KisOpenGLBufferCircularStorage.cpp
     opengl/KisOpenGLSync.cpp
     opengl/KisOpenGLBufferCreationGuard.cpp
+    opengl/KisOpenGLCanvasRenderer.cpp
     kis_fps_decoration.cpp
 
     tool/KisToolChangesTracker.cpp
@@ -201,6 +204,7 @@ set(kritaui_LIB_SRCS
     tool/kis_tool_ellipse_base.cpp
     tool/kis_tool_rectangle_base.cpp
     tool/kis_tool_polyline_base.cpp
+    tool/KisToolOutlineBase.cpp
     tool/kis_tool_utils.cpp
     tool/kis_resources_snapshot.cpp
     tool/kis_smoothing_options.cpp
@@ -220,6 +224,7 @@ set(kritaui_LIB_SRCS
     tool/KisSelectionToolFactoryBase.cpp
     tool/KisToolPaintFactoryBase.cpp
 
+    widgets/kis_canvas_drop.cpp
     widgets/kis_cmb_composite.cc
     widgets/kis_cmb_contour.cpp
     widgets/kis_cmb_gradient.cpp
@@ -303,10 +308,10 @@ set(kritaui_LIB_SRCS
 
     utils/kis_document_aware_spin_box_unit_manager.cpp
     utils/KisSpinBoxSplineUnitConverter.cpp
-    utils/KisClipboardUtil.cpp
     utils/KisDitherUtil.cpp
     utils/KisFileIconCreator.cpp
     utils/KisRecentDocumentsModelWrapper.cpp
+    utils/KisRecentFileIconCache.cpp
 
     input/kis_input_manager.cpp
     input/kis_input_manager_p.cpp
@@ -331,6 +336,7 @@ set(kritaui_LIB_SRCS
     input/KisInputActionGroup.cpp
     input/kis_zoom_and_rotate_action.cpp
     input/KisCanvasOnlyAction.cpp
+    input/KisTouchGestureAction.cpp
 
     operations/kis_operation.cpp
     operations/kis_operation_configuration.cpp
@@ -370,7 +376,9 @@ set(kritaui_LIB_SRCS
     input/config/kis_mouse_input_editor.cpp
     input/config/kis_wheel_input_editor.cpp
     input/config/kis_key_input_editor.cpp
+    input/config/KisGestureSelector.cpp
     processing/fill_processing_visitor.cpp
+    processing/KisEncloseAndFillProcessingVisitor.cpp
     canvas/kis_mirror_axis.cpp
 
     imagesize/imagesize.cc
@@ -536,6 +544,7 @@ ki18n_wrap_ui(kritaui_LIB_SRCS
     widgets/KoStrokeConfigWidget.ui
     widgets/KisDitherWidget.ui
     widgets/KisAutoLevelsWidget.ui
+
     forms/wdgdlgpngimport.ui
     forms/wdgfullscreensettings.ui
     forms/wdgsegmentgradienteditor.ui
@@ -586,6 +595,8 @@ ki18n_wrap_ui(kritaui_LIB_SRCS
     forms/koDocumentInfoAboutWidget.ui
     forms/koDocumentInfoAuthorWidget.ui
     forms/WdgPopupPaletteSettings.ui
+    forms/wdgMissingColorProfile.ui
+    forms/wdgPasteFormat.ui
 
 
     brushhud/kis_dlg_brush_hud_config.ui

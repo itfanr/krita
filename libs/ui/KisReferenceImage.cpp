@@ -5,6 +5,7 @@
  */
 
 #include "KisReferenceImage.h"
+#include "KoColorSpaceRegistry.h"
 
 #include <QImage>
 #include <QMessageBox>
@@ -30,10 +31,11 @@
 #include <SvgUtil.h>
 #include <libs/flake/svg/parsers/SvgTransformParser.h>
 #include <libs/brush/kis_qimage_pyramid.h>
-#include <utils/KisClipboardUtil.h>
 
 #include <KisDocument.h>
 #include <KisPart.h>
+
+#include "kis_clipboard.h"
 
 struct KisReferenceImage::Private : public QSharedData
 {
@@ -87,11 +89,6 @@ struct KisReferenceImage::Private : public QSharedData
 #endif
 
         return (!image.isNull());
-    }
-
-    bool loadFromClipboard() {
-        image = KisClipboardUtil::getImageFromClipboard();
-        return !image.isNull();
     }
 
     void updateCache() {
@@ -186,17 +183,24 @@ KisReferenceImage * KisReferenceImage::fromFile(const QString &filename, const K
 
 KisReferenceImage *KisReferenceImage::fromClipboard(const KisCoordinatesConverter &converter)
 {
-    KisReferenceImage *reference = new KisReferenceImage();
-    bool ok = reference->d->loadFromClipboard();
+    const auto sz = KisClipboard::instance()->clipSize();
+    KisPaintDeviceSP clip = KisClipboard::instance()->clip({0, 0, sz.width(), sz.height()}, true);
+    return fromPaintDevice(clip, converter, nullptr);
+}
 
-    if (ok) {
-        QRect r = QRect(QPoint(), reference->d->image.size());
-        QSizeF size = converter.imageToDocument(r).size();
-        reference->setSize(size);
-    } else {
-        delete reference;
-        reference = nullptr;
+KisReferenceImage *
+KisReferenceImage::fromPaintDevice(KisPaintDeviceSP src, const KisCoordinatesConverter &converter, QWidget *)
+{
+    if (!src) {
+        return nullptr;
     }
+
+    auto *reference = new KisReferenceImage();
+    reference->d->image = src->convertToQImage(KoColorSpaceRegistry::instance()->p709SRGBProfile());
+
+    QRect r = QRect(QPoint(), reference->d->image.size());
+    QSizeF size = converter.imageToDocument(r).size();
+    reference->setSize(size);
 
     return reference;
 }

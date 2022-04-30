@@ -208,10 +208,11 @@ void KisDlgAnimationRenderer::initializeRenderSettings(const KisDocument &doc, c
     const QString documentPath = m_doc->localFilePath();
 
     // Initialize these settings based on last used configuration when possible..
-    m_page->txtBasename->setText(lastUsedOptions.basename);
-
     if (!lastUsedOptions.lastDocuemntPath.isEmpty() &&
             lastUsedOptions.lastDocuemntPath == documentPath) {
+
+        // If the file is the same as last time, we use the last used basename.
+        m_page->txtBasename->setText(lastUsedOptions.basename);
 
         m_page->sequenceStart->setValue(lastUsedOptions.sequenceStart);
         m_page->intWidth->setValue(lastUsedOptions.width);
@@ -290,12 +291,13 @@ void KisDlgAnimationRenderer::initializeRenderSettings(const KisDocument &doc, c
     ffmpegVersion = ffmpegJsonObj["enabled"].toBool() ? ffmpegJsonObj["version"].toString():"None";
 
     m_page->ffmpegLocation->setFileName(ffmpegPath);
+    m_page->ffmpegLocation->setReadOnlyText(true);
     cfg.setFFMpegLocation(ffmpegPath);
-    m_page->lblFFMpegVersion->setText("FFMpeg Version: " + ffmpegVersion + (ffmpegJsonObj["encoder"].toObject()["h264"].toBool() ? "":" (MP4/MKV UNSUPPORTED)"));
+    m_page->lblFFMpegVersion->setText("FFMpeg Version: " + ffmpegVersion + (!ffmpegJsonObj["enabled"].toBool() || ffmpegJsonObj["encoder"].toObject()["h264"].toBool() ? "":" (MP4/MKV UNSUPPORTED)"));
     
     ffmpegWarningCheck();
 
-    connect(m_page->ffmpegLocation, SIGNAL(textChanged(QString)), SLOT(slotFFMpegChanged(QString)));
+    connect(m_page->ffmpegLocation, SIGNAL(fileSelected(QString)), SLOT(slotFFMpegChanged(QString)));
 
     // Initialize these settings based on the current document context..
     m_page->intStart->setValue(doc.image()->animationInterface()->playbackRange().start());
@@ -325,9 +327,10 @@ void KisDlgAnimationRenderer::slotFFMpegChanged(const QString& path) {
     ffmpegVersion = ffmpegChangeJsonObj["enabled"].toBool() ? ffmpegChangeJsonObj["version"].toString():"None";
 
     cfg.setFFMpegLocation(ffmpegChangeJsonObj["path"].toString());
-    m_page->lblFFMpegVersion->setText("FFMpeg Version: " + ffmpegVersion + (ffmpegChangeJsonObj["encoder"].toObject()["h264"].toBool() ? "":" (MP4/MKV UNSUPPORTED)"));
+    m_page->lblFFMpegVersion->setText("FFMpeg Version: " + ffmpegVersion + (!ffmpegChangeJsonObj["enabled"].toBool() || ffmpegChangeJsonObj["encoder"].toObject()["h264"].toBool() ? "":" (MP4/MKV UNSUPPORTED)"));
 
     ffmpegWarningCheck();
+    ffmpegValidate();
 }
 
 void KisDlgAnimationRenderer::ffmpegWarningCheck() {
@@ -347,7 +350,7 @@ QString KisDlgAnimationRenderer::defaultVideoFileName(KisDocument *doc, const QS
     return
         QString("%1.%2")
             .arg(QFileInfo(docFileName).completeBaseName())
-            .arg(KisMimeDatabase::suffixesForMimeType( mimeType == "image/apng" ? "image/png":mimeType ).first());
+            .arg(KisMimeDatabase::suffixesForMimeType(mimeType).first());
 }
 
 void KisDlgAnimationRenderer::selectRenderType(int index)
@@ -367,7 +370,7 @@ void KisDlgAnimationRenderer::selectRenderType(int index)
         const QString path = info.path();
 
         videoFileName =
-            QString("%1%2%3.%4").arg(path).arg('/').arg(baseName).arg(KisMimeDatabase::suffixesForMimeType( mimeType == "image/apng" ? "image/png":mimeType ).first());
+            QString("%1%2%3.%4").arg(path).arg('/').arg(baseName).arg(KisMimeDatabase::suffixesForMimeType(mimeType).first());
 
     }
     m_page->videoFilename->setMimeTypeFilters(QStringList() << mimeType, mimeType);
@@ -516,48 +519,58 @@ KisAnimationRenderingOptions KisDlgAnimationRenderer::getEncoderOptions() const
     return options;
 }
 
+bool KisDlgAnimationRenderer::ffmpegValidate()
+{
+    QString ffmpeg = m_page->ffmpegLocation->fileName();
+
+    if (ffmpeg.isEmpty()) {
+        QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("<b>Krita can't find FFmpeg!</b><br> \
+            <i>Krita depends on another free program called FFmpeg to turn frame-by-frame animations into video files. (<a href=\"https://www.ffmpeg.org\">www.ffmpeg.org</a>)</i><br><br>\
+            To learn more about setting up Krita for rendering animations, <a href=\"https://docs.krita.org/en/reference_manual/render_animation.html#setting-up-krita-for-exporting-animations\">please visit this section of our User Manual.</a>"));
+        return false;
+    }
+    else {
+        QFileInfo fi(ffmpeg);
+        if (!fi.exists()) {
+            QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("The location of FFmpeg is invalid. Please select the correct location of the FFmpeg executable on your system."));
+            return false;
+        }
+        if (fi.fileName().endsWith("zip") || fi.fileName().endsWith("7z")) {
+            QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("Please extract ffmpeg from the archive first."));
+            return false;
+        }
+
+        if (fi.fileName().endsWith("tar.bz2")) {
+#ifdef Q_OS_WIN
+            QMessageBox::warning(this, i18nc("@title:window", "Krita"),
+                                    i18n("This is a source code archive. Please download the application archive ('Windows Builds'), unpack it and then provide the path to the extracted ffmpeg file."));
+#else
+            QMessageBox::warning(this, i18nc("@title:window", "Krita"),
+                                    i18n("This is a source code archive. Please install ffmpeg instead."));
+#endif
+            return false;
+        }
+
+        if (!fi.isExecutable()) {
+            QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("The location of FFmpeg is invalid. Please select the correct location of the FFmpeg executable on your system."));
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void KisDlgAnimationRenderer::slotButtonClicked(int button)
 {
     if (button == KoDialog::Ok && !m_page->shouldExportOnlyImageSequence->isChecked()) {
-        QString ffmpeg = m_page->ffmpegLocation->fileName();
-        if (m_page->videoFilename->fileName().isEmpty()) {
+        QString fileName = m_page->videoFilename->fileName();
+
+        if (fileName.isEmpty()) {
             QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("Please enter a file name to render to."));
             return;
         }
-        else if (ffmpeg.isEmpty()) {
-            QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("<b>Krita can't find FFmpeg!</b><br> \
-               <i>Krita depends on another free program called FFmpeg to turn frame-by-frame animations into video files. (<a href=\"https://www.ffmpeg.org\">www.ffmpeg.org</a>)</i><br><br>\
-               To learn more about setting up Krita for rendering animations, <a href=\"https://docs.krita.org/en/reference_manual/render_animation.html#setting-up-krita-for-exporting-animations\">please visit this section of our User Manual.</a>"));
-            return;
-        }
         else {
-            QFileInfo fi(ffmpeg);
-            if (!fi.exists()) {
-                QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("The location of FFmpeg is invalid. Please select the correct location of the FFmpeg executable on your system."));
-                return;
-            }
-            if (fi.fileName().endsWith("zip")) {
-                QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("Please extract ffmpeg from the archive first."));
-                return;
-            }
-
-            if (fi.fileName().endsWith("tar.bz2")) {
-#ifdef Q_OS_WIN
-                QMessageBox::warning(this, i18nc("@title:window", "Krita"),
-                                     i18n("This is a source code archive. Please download the application archive ('Windows Builds'), unpack it and then provide the path to the extracted ffmpeg file."));
-#else
-                QMessageBox::warning(this, i18nc("@title:window", "Krita"),
-                                     i18n("This is a source code archive. Please install ffmpeg instead."));
-#endif
-                return;
-            }
-
-            if (!fi.isExecutable()) {
-                QMessageBox::warning(this, i18nc("@title:window", "Krita"), i18n("The location of FFmpeg is invalid. Please select the correct location of the FFmpeg executable on your system."));
-                return;
-            }
-
-
+            if (!ffmpegValidate()) return;
         }
     }
     KoDialog::slotButtonClicked(button);

@@ -44,6 +44,7 @@
         <file>dark_close-tab.svg</file>
         <file>dark_deletekeyframe.svg</file>
         <file>dark_dialog-cancel.svg</file>
+        <file>dark_dialog-cancel-16.svg</file>
         <file>dark_document-edit.svg</file>
         <file>dark_document-export.svg</file>
         <file>dark_document-import.svg</file>
@@ -164,6 +165,7 @@
         <file>light_close-tab.svg</file>
         <file>light_deletekeyframe.svg</file>
         <file>light_dialog-cancel.svg</file>
+        <file>light_dialog-cancel-16.svg</file>
         <file>light_document-edit.svg</file>
         <file>light_document-export.svg</file>
         <file>light_document-import.svg</file>
@@ -397,5 +399,15 @@
         <file>light_histogram-show-all.svg</file>
         <file>dark_histogram-show-best.svg</file>
         <file>light_histogram-show-best.svg</file>
+        <file>dark_current-layer.svg</file>
+        <file>light_current-layer.svg</file>
+        <file>dark_all-layers.svg</file>
+        <file>light_all-layers.svg</file>
+        <file>dark_contiguous-selection.svg</file>
+        <file>light_contiguous-selection.svg</file>
+        <file>dark_different-regions.svg</file>
+        <file>light_different-regions.svg</file>
+        <file>dark_similar-regions.svg</file>
+        <file>light_similar-regions.svg</file>
     </qresource>
 </RCC>

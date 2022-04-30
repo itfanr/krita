@@ -38,12 +38,11 @@
 #include <kis_canvas_resource_provider.h>
 #include <KoColorBackground.h>
 #include <KoShapeStroke.h>
+#include "KisMainWindow.h"
 
 #include <ctime>
 
 #include "ui_wdgGamutMaskChooser.h"
-
-class KisMainWindow;
 
 struct GamutMaskChooserUI: public QWidget, public Ui_wdgGamutMaskChooser
 {
@@ -55,15 +54,6 @@ struct GamutMaskChooserUI: public QWidget, public Ui_wdgGamutMaskChooser
 
 GamutMaskDock::GamutMaskDock()
     : QDockWidget(i18n("Gamut Masks"))
-    , m_resourceProvider(0)
-    , m_selfClosingTemplate(false)
-    , m_externalTemplateClose(false)
-    , m_creatingNewMask(false)
-    , m_templatePrevSaved(false)
-    , m_selfSelectingMask(false)
-    , m_selectedMask(nullptr)
-    , m_maskDocument(nullptr)
-    , m_view(nullptr)
 {
     m_dockerUI    = new GamutMaskChooserUI();
 

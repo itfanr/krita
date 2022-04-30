@@ -232,18 +232,6 @@ public:
     virtual void prepareForSeqNo(const KisPaintInformation& info, int seqNo);
 
     /**
-     * Notify the brush if it can use QtConcurrent's threading capabilities in its
-     * internal routines. By default it is allowed, but some paintops (who do their
-     * own multithreading) may ask the brush to avoid internal threading.
-     */
-    void setThreadingAllowed(bool value);
-
-    /**
-     * \see setThreadingAllowed() for details
-     */
-    bool threadingAllowed() const;
-
-    /**
      * Return a fixed paint device that contains a correctly scaled image dab.
      */
     virtual KisFixedPaintDeviceSP paintDevice(const KoColorSpace * colorSpace,
@@ -327,7 +315,7 @@ public:
 
     static KoResourceLoadResult fromXMLLoadResult(const QDomElement& element, KisResourcesInterfaceSP resourcesInterface);
 
-    virtual QPainterPath outline() const;
+    virtual QPainterPath outline(bool forcePreciseOutline = false) const;
 
     virtual void setScale(qreal _scale);
     qreal scale() const;
@@ -371,7 +359,7 @@ public:
      * WARNING: this method is relatively expensive since it iterates
      *          up to 100 pixels of the brush.
      */
-    bool isPiercedApprox() const;
+    virtual bool isPiercedApprox() const;
 
 protected:
 

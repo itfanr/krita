@@ -35,7 +35,6 @@ wavelength, and thus define the outline of the CIE "tongue" diagram.
 #include <cmath>
 
 #include <klocalizedstring.h>
-#include <kpixmapsequence.h>
 
 #include <kis_icon.h>
 #include <KoColorSpaceRegistry.h>
@@ -130,68 +129,39 @@ static const double spectral_chromaticity[81][3] =
 class Q_DECL_HIDDEN KisCIETongueWidget::Private
 {
 public:
+
+    bool            profileDataAvailable {false};
+    bool            needUpdatePixmap {false};
+    bool            cieTongueNeedsUpdate {true};
+    bool            uncalibratedColor {false};
  
-    Private() :
-        profileDataAvailable(false),
-        needUpdatePixmap(false),
-        cieTongueNeedsUpdate(true),
-        uncalibratedColor(false),
-        xBias(0),
-        yBias(0),
-        pxcols(0),
-        pxrows(0),
-        progressCount(0),
-        gridside(0),
-        progressTimer(0),
-        Primaries(9),
-        whitePoint(3)
-        
-    {
-        progressPix = KPixmapSequence("process-working", KisIconUtils::SizeSmallMedium);
-    }
-    
-    bool            profileDataAvailable;
-    bool            needUpdatePixmap;
-    bool            cieTongueNeedsUpdate;
-    bool            uncalibratedColor;
+    int             xBias {0};
+    int             yBias {0};
+    int             pxcols {0};
+    int             pxrows {0};
  
-    int             xBias;
-    int             yBias;
-    int             pxcols;
-    int             pxrows;
-    int             progressCount;           // Position of animation during loading/calculation.
- 
-    double          gridside;
+    double          gridside {0.0};
  
     QPainter        painter;
- 
-    QTimer*         progressTimer;
  
     QPixmap         pixmap;
     QPixmap         cietongue;
     QPixmap         gamutMap;
-    KPixmapSequence progressPix;
  
-    QVector <double> Primaries;
-    QVector <double> whitePoint;
+    QVector <double> Primaries {9};
+    QVector <double> whitePoint {3};
     QPolygonF       gamut;
-    model colorModel;
+    model colorModel {model::RGBA};
 };
 
 KisCIETongueWidget::KisCIETongueWidget(QWidget *parent) :
     QWidget(parent), d(new Private)
 {
-    d->progressTimer = new QTimer(this);
-    setAttribute(Qt::WA_DeleteOnClose);
-    
     d->Primaries.resize(9);
     d->Primaries.fill(0.0);
     d->whitePoint.resize(3);
     d->whitePoint<<0.34773<<0.35952<<1.0;
     d->gamut = QPolygonF();
-
-    connect(d->progressTimer, SIGNAL(timeout()),
-            this, SLOT(slotProgressTimerDone()));
 }
 
 KisCIETongueWidget::~KisCIETongueWidget()
@@ -401,6 +371,7 @@ void KisCIETongueWidget::fillTongue()
     }
  
     d->cietongue = QPixmap::fromImage(Img, Qt::AvoidDither);
+    d->cietongue.setDevicePixelRatio(devicePixelRatioF());
 }
  
 void KisCIETongueWidget::drawTongueAxis()
@@ -549,6 +520,7 @@ void KisCIETongueWidget::drawWhitePoint()
 void KisCIETongueWidget::drawGamut()
 {
     d->gamutMap=QPixmap(size());
+    d->gamutMap.setDevicePixelRatio(devicePixelRatioF());
     d->gamutMap.fill(Qt::black);
     QPainter gamutPaint;
     gamutPaint.begin(&d->gamutMap);
@@ -596,6 +568,7 @@ void KisCIETongueWidget::updatePixmap()
 {
     d->needUpdatePixmap = false;
     d->pixmap = QPixmap(size());
+    d->pixmap.setDevicePixelRatio(devicePixelRatioF());
 
     if (d->cieTongueNeedsUpdate){
     // Draw the CIE tongue curve. I don't see why we need to redraw it every time the whitepoint and such changes so we cache it.
@@ -678,7 +651,7 @@ void KisCIETongueWidget::paintEvent(QPaintEvent*)
  
         p.setPen(pen);
         p.drawRect(0, 0, width(), height());
- 
+
         if (d->uncalibratedColor)
         {
             p.drawText(0, 0, width(), height(), Qt::AlignCenter,
@@ -706,15 +679,7 @@ void KisCIETongueWidget::paintEvent(QPaintEvent*)
  
 void KisCIETongueWidget::resizeEvent(QResizeEvent* event)
 {
-    Q_UNUSED(event);
-    setMinimumHeight(width());
-    setMaximumHeight(width());
+    QWidget::resizeEvent(event);
     d->needUpdatePixmap = true;
     d->cieTongueNeedsUpdate = true;
-}
- 
-void KisCIETongueWidget::slotProgressTimerDone()
-{
-    update();
-    d->progressTimer->start(200);
 }

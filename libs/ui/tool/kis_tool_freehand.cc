@@ -53,13 +53,8 @@ using namespace std::placeholders; // For _1 placeholder
 
 KisToolFreehand::KisToolFreehand(KoCanvasBase * canvas, const QCursor & cursor, const KUndo2MagicString &transactionText)
     : KisToolPaint(canvas, cursor),
-      m_paintopBasedSamplingInAction(false),
       m_brushResizeCompressor(200, std::bind(&KisToolFreehand::slotDoResizeBrush, this, _1))
 {
-    m_assistant = false;
-    m_magnetism = 1.0;
-    m_only_one_assistant = true;
-    m_eraser_snapping = false;
 
     setSupportOutline(true);
     setMaskSyntheticEvents(KisConfig(true).disableTouchOnCanvas()); // Disallow mouse events from finger presses unless enabled
@@ -68,6 +63,8 @@ KisToolFreehand::KisToolFreehand(KoCanvasBase * canvas, const QCursor & cursor, 
     m_helper = new KisToolFreehandHelper(m_infoBuilder, canvas->resourceManager(), transactionText);
 
     connect(m_helper, SIGNAL(requestExplicitUpdateOutline()), SLOT(explicitUpdateOutline()));
+
+    connect(qobject_cast<KisCanvas2*>(canvas)->viewManager(), SIGNAL(brushOutlineToggled()), SLOT(explicitUpdateOutline()));
 }
 
 KisToolFreehand::~KisToolFreehand()
@@ -292,7 +289,7 @@ void KisToolFreehand::activateAlternateAction(AlternateAction action)
     }
 
     useCursor(KisCursor::blankCursor());
-    setOutlineEnabled(true);
+    setOutlineVisible(true);
 }
 
 void KisToolFreehand::deactivateAlternateAction(AlternateAction action)
@@ -303,7 +300,7 @@ void KisToolFreehand::deactivateAlternateAction(AlternateAction action)
     }
 
     resetCursorStyle();
-    setOutlineEnabled(false);
+    setOutlineVisible(false);
 }
 
 void KisToolFreehand::beginAlternateAction(KoPointerEvent *event, AlternateAction action)

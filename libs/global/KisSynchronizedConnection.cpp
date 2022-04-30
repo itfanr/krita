@@ -23,7 +23,13 @@ struct KisSynchronizedConnectionEventTypeRegistrar
     int eventType = -1;
 };
 
+struct KisBarrierCallbackContainer
+{
+    std::function<void()> callback;
+};
+
 Q_GLOBAL_STATIC(KisSynchronizedConnectionEventTypeRegistrar, s_instance)
+Q_GLOBAL_STATIC(KisBarrierCallbackContainer, s_barrier)
 
 
 /************************************************************************/
@@ -55,6 +61,12 @@ int KisSynchronizedConnectionBase::eventType()
     return s_instance->eventType;
 }
 
+void KisSynchronizedConnectionBase::registerSynchronizedEventBarrier(std::function<void ()> callback)
+{
+    KIS_SAFE_ASSERT_RECOVER_NOOP(!s_barrier->callback);
+    s_barrier->callback = callback;
+}
+
 bool KisSynchronizedConnectionBase::event(QEvent *event)
 {
     if (event->type() == s_instance->eventType) {
@@ -72,6 +84,14 @@ bool KisSynchronizedConnectionBase::event(QEvent *event)
 void KisSynchronizedConnectionBase::postEvent()
 {
     if (QThread::currentThread() == this->thread()) {
+        /// TODO: This assert triggers in unittests that don't have a fully-featured
+        /// KisApplication object. Perhaps we should add a fake callback to KISTEST_MAIN
+        /// KIS_SAFE_ASSERT_RECOVER_NOOP(s_barrier->callback);
+
+        if (s_barrier->callback) {
+            s_barrier->callback();
+        }
+
         deliverEventToReceiver();
     } else {
         qApp->postEvent(this, new KisSynchronizedConnectionEvent(this));

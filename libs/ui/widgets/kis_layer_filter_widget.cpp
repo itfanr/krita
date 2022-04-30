@@ -40,7 +40,7 @@ KisLayerFilterWidget::KisLayerFilterWidget(QWidget *parent) : QWidget(parent)
 
     textFilter = new KisPopupSelfActivatingLineEdit(this);
     textFilter->setPlaceholderText(i18n("Filter by name..."));
-    textFilter->setMinimumWidth(255);
+    textFilter->setMinimumWidth(200);
     textFilter->setMinimumHeight(28);
     textFilter->setClearButtonEnabled(true);
 
@@ -62,14 +62,14 @@ KisLayerFilterWidget::KisLayerFilterWidget(QWidget *parent) : QWidget(parent)
     {
         QHBoxLayout *subLayout = new QHBoxLayout(buttonContainer);
         subLayout->setContentsMargins(0,0,0,0);
-        subLayout->setSpacing(0);
+        subLayout->setSpacing(2);
         subLayout->setAlignment(Qt::AlignLeft);
         buttonGroup = new KisColorLabelFilterGroup(buttonContainer);
         buttonGroup->setExclusive(false);
         QVector<QColor> colors = colorScheme.allColorLabels();
 
         for (int id = 0; id < colors.count(); id++) {
-            KisColorLabelButton* btn = new KisColorLabelButton(colors[id], 28, buttonContainer);
+            KisColorLabelButton* btn = new KisColorLabelButton(colors[id], 22, buttonContainer);
             buttonGroup->addButton(btn, id);
             btn->installEventFilter(buttonEventFilter);
             subLayout->addWidget(btn);

@@ -86,7 +86,7 @@ void ToolReferenceImages::addReferenceImage()
     auto kisCanvas = dynamic_cast<KisCanvas2*>(canvas());
     KIS_ASSERT_RECOVER_RETURN(kisCanvas);
 
-            KoFileDialog dialog(kisCanvas->viewManager()->mainWindow(), KoFileDialog::OpenFile, "OpenReferenceImage");
+            KoFileDialog dialog(kisCanvas->viewManager()->mainWindowAsQWidget(), KoFileDialog::OpenFile, "OpenReferenceImage");
     dialog.setCaption(i18n("Select a Reference Image"));
 
     QStringList locations = QStandardPaths::standardLocations(QStandardPaths::PicturesLocation);
@@ -142,7 +142,7 @@ void ToolReferenceImages::loadReferenceImages()
     auto kisCanvas = dynamic_cast<KisCanvas2*>(canvas());
     KIS_ASSERT_RECOVER_RETURN(kisCanvas);
 
-            KoFileDialog dialog(kisCanvas->viewManager()->mainWindow(), KoFileDialog::OpenFile, "OpenReferenceImageCollection");
+            KoFileDialog dialog(kisCanvas->viewManager()->mainWindowAsQWidget(), KoFileDialog::OpenFile, "OpenReferenceImageCollection");
     dialog.setMimeTypeFilters(QStringList() << "application/x-krita-reference-images");
     dialog.setCaption(i18n("Load Reference Images"));
 
@@ -192,7 +192,7 @@ void ToolReferenceImages::saveReferenceImages()
     auto kisCanvas = dynamic_cast<KisCanvas2*>(canvas());
     KIS_ASSERT_RECOVER_RETURN(kisCanvas);
 
-            KoFileDialog dialog(kisCanvas->viewManager()->mainWindow(), KoFileDialog::SaveFile, "SaveReferenceImageCollection");
+            KoFileDialog dialog(kisCanvas->viewManager()->mainWindowAsQWidget(), KoFileDialog::SaveFile, "SaveReferenceImageCollection");
     dialog.setMimeTypeFilters(QStringList() << "application/x-krita-reference-images");
     dialog.setCaption(i18n("Save Reference Images"));
 
@@ -311,20 +311,9 @@ QMenu* ToolReferenceImages::popupActionsMenu()
 
         m_contextMenu->addSeparator();
 
-        KisAction* cut = new KisAction(i18n("Cut"));
-        cut->setIcon(KisIconUtils::loadIcon("edit-cut"));
-        KisAction* copy = new KisAction(i18n("Copy"));
-        copy->setIcon(KisIconUtils::loadIcon("edit-copy"));
-        KisAction* paste = new KisAction(i18n("Paste"));
-        paste->setIcon(KisIconUtils::loadIcon("edit-paste"));
-
-        connect(cut,SIGNAL(triggered()),this,SLOT(cut()));
-        connect(copy,SIGNAL(triggered()),this,SLOT(copy()));
-        connect(paste,SIGNAL(triggered()),this,SLOT(paste()));
-
-        m_contextMenu->addAction(cut);
-        m_contextMenu->addAction(copy);
-        m_contextMenu->addAction(paste);
+        m_contextMenu->addAction(action("edit_cut"));
+        m_contextMenu->addAction(action("edit_copy"));
+        m_contextMenu->addAction(action("edit_paste"));
 
         m_contextMenu->addSeparator();
 
@@ -346,10 +335,12 @@ void ToolReferenceImages::cut()
 void ToolReferenceImages::copy() const
 {
     QList<KoShape *> shapes = koSelection()->selectedShapes();
-    KoShape* shape = shapes.at(0);
-    KisReferenceImage *reference = dynamic_cast<KisReferenceImage*>(shape);
-    QClipboard *cb = QApplication::clipboard();
-    cb->setImage(reference->getImage());
+    if (!shapes.isEmpty()) {
+        KoShape* shape = shapes.at(0);
+        KisReferenceImage *reference = dynamic_cast<KisReferenceImage*>(shape);
+        QClipboard *cb = QApplication::clipboard();
+        cb->setImage(reference->getImage());
+    }
 }
 
 bool ToolReferenceImages::paste()

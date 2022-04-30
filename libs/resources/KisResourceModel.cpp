@@ -36,16 +36,17 @@ KisAllResourcesModel::KisAllResourcesModel(const QString &resourceType, QObject 
     , d(new Private)
 {
 
-    connect(KisResourceLocator::instance(), SIGNAL(storageAdded(const QString&)), this, SLOT(addStorage(const QString&)));
-    connect(KisResourceLocator::instance(), SIGNAL(storageRemoved(const QString&)), this, SLOT(removeStorage(const QString&)));
-    connect(KisStorageModel::instance(), SIGNAL(storageEnabled(const QString&)), this, SLOT(addStorage(const QString&)));
-    connect(KisStorageModel::instance(), SIGNAL(storageDisabled(const QString&)), this, SLOT(removeStorage(const QString&)));
+    /// we don't handle KisResourceLocator::storage{Added,Removed} signals
+    /// here, we use per-resource notifications from KisResourceLocator instead
 
-    connect(KisResourceLocator::instance(), SIGNAL(beginExternalResourceImport(QString)), this, SLOT(beginExternalResourceImport(QString)));
+    connect(KisStorageModel::instance(), SIGNAL(storageEnabled(const QString&)), this, SLOT(storageActiveStateChanged(const QString&)));
+    connect(KisStorageModel::instance(), SIGNAL(storageDisabled(const QString&)), this, SLOT(storageActiveStateChanged(const QString&)));
+
+    connect(KisResourceLocator::instance(), SIGNAL(beginExternalResourceImport(QString, int)), this, SLOT(beginExternalResourceImport(QString, int)));
     connect(KisResourceLocator::instance(), SIGNAL(endExternalResourceImport(QString)), this, SLOT(endExternalResourceImport(QString)));
 
-    connect(KisResourceLocator::instance(), SIGNAL(beginExternalResourceOverride(QString, int)), this, SLOT(beginExternalResourceOverride(QString, int)));
-    connect(KisResourceLocator::instance(), SIGNAL(endExternalResourceOverride(QString, int)), this, SLOT(endExternalResourceOverride(QString, int)));
+    connect(KisResourceLocator::instance(), SIGNAL(beginExternalResourceRemove(QString, QVector<int>)), this, SLOT(beginExternalResourceRemove(QString, QVector<int>)));
+    connect(KisResourceLocator::instance(), SIGNAL(endExternalResourceRemove(QString)), this, SLOT(endExternalResourceRemove(QString)));
     connect(KisResourceLocator::instance(), SIGNAL(resourceActiveStateChanged(QString, int)), this, SLOT(slotResourceActiveStateChanged(QString, int)));
 
     d->resourceType = resourceType;
@@ -607,28 +608,27 @@ int KisAllResourcesModel::rowCount(const QModelIndex &parent) const
     return d->cachedRowCount;
 }
 
-
-void KisAllResourcesModel::addStorage(const QString &location)
+void KisAllResourcesModel::storageActiveStateChanged(const QString &location)
 {
-    Q_UNUSED(location)
-    beginResetModel();
+    const QVector<int> resourceIds = KisResourceCacheDb::resourcesForStorage(d->resourceType, location);
+    if (resourceIds.isEmpty()) return;
+
     resetQuery();
-    endResetModel();
+
+    Q_FOREACH (int resourceId, resourceIds) {
+        QModelIndex index = indexForResourceId(resourceId);
+
+        if (index.isValid()) {
+            Q_EMIT dataChanged(index, index, {Qt::UserRole + KisAbstractResourceModel::StorageActive});
+        }
+    }
 }
 
-void KisAllResourcesModel::removeStorage(const QString &location)
-{
-    Q_UNUSED(location)
-    beginResetModel();
-    resetQuery();
-    endResetModel();
-}
-
-void KisAllResourcesModel::beginExternalResourceImport(const QString &resourceType)
+void KisAllResourcesModel::beginExternalResourceImport(const QString &resourceType, int numResources)
 {
     if (resourceType != d->resourceType) return;
 
-    beginInsertRows(QModelIndex(), rowCount(), rowCount());
+    beginInsertRows(QModelIndex(), rowCount(), rowCount() + numResources - 1);
 }
 
 void KisAllResourcesModel::endExternalResourceImport(const QString &resourceType)
@@ -639,19 +639,18 @@ void KisAllResourcesModel::endExternalResourceImport(const QString &resourceType
     endInsertRows();
 }
 
-void KisAllResourcesModel::beginExternalResourceOverride(const QString &resourceType, int resourceId)
+void KisAllResourcesModel::beginExternalResourceRemove(const QString &resourceType, const QVector<int> &resourceIds)
 {
     if (resourceType != d->resourceType) return;
 
-    const QModelIndex index = indexForResourceId(resourceId);
-
-    beginRemoveRows(QModelIndex(), index.row(), index.row());
+    Q_FOREACH (int resourceId, resourceIds) {
+        const QModelIndex index = indexForResourceId(resourceId);
+        beginRemoveRows(QModelIndex(), index.row(), index.row());
+    }
 }
 
-void KisAllResourcesModel::endExternalResourceOverride(const QString &resourceType, int resourceId)
+void KisAllResourcesModel::endExternalResourceRemove(const QString &resourceType)
 {
-    Q_UNUSED(resourceId)
-
     if (resourceType != d->resourceType) return;
 
     resetQuery();

@@ -171,7 +171,7 @@ bool KisPaintOpPreset::loadFromDevice(QIODevice *dev, KisResourcesInterfaceSP re
     QString preset = reader.text("preset");
     int resourceCount = reader.text("embedded_resources").toInt();
 
-    if (!(d->version == "2.2" || "5.0")) {
+    if (!(d->version == "2.2" || d->version == "5.0")) {
         return false;
     }
 
@@ -275,8 +275,11 @@ void KisPaintOpPreset::toXML(QDomDocument& doc, QDomElement& elt) const
             }
 
             //KIS_SAFE_ASSERT_RECOVER_NOOP(resource->isSerializable() && "embedding non-serializable resources is not yet implemented");
-            qWarning() << "embedding non-serializable resources is not yet implemented. Resource: " << filename() << name()
-                       << "cannot embed" << resource->filename() << resource->name() << resource->resourceType().first << resource->resourceType().second;
+            if (!resource->isSerializable()) {
+                qWarning() << "embedding non-serializable resources is not yet implemented. Resource: " << filename() << name()
+                           << "cannot embed" << resource->filename() << resource->name() << resource->resourceType().first << resource->resourceType().second;
+                continue;
+            }
 
             QBuffer buf;
             buf.open(QBuffer::WriteOnly);

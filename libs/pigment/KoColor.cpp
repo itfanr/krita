@@ -21,6 +21,7 @@
 #include "KoColorSpaceRegistry.h"
 #include "KoChannelInfo.h"
 #include "kis_assert.h"
+#include "kis_dom_utils.h"
 
 #include <QGlobalStatic>
 
@@ -301,6 +302,30 @@ const KoColorProfile *KoColor::profile() const
 void KoColor::toXML(QDomDocument& doc, QDomElement& colorElt) const
 {
     m_colorSpace->colorToXML(m_data, doc, colorElt);
+
+    for (QString key : m_metadata.keys()) {
+
+        QDomElement e = doc.createElement("metadata");
+        e.setAttribute("name", QString(key.toLatin1()));
+        QVariant v = m_metadata.value(key);
+        e.setAttribute("type", v.typeName());
+
+        QString attrName = "value";
+        if(v.type() == QVariant::String ) {
+            e.setAttribute(attrName, v.toString());
+            e.setAttribute("type", "string");
+        } else if(v.type() == QVariant::Int ) {
+            e.setAttribute(attrName, v.toInt());
+        } else if(v.type() == QVariant::Double ) {
+            e.setAttribute(attrName, v.toDouble());
+        } else  if(v.type() == QVariant::Bool ) {
+            e.setAttribute(attrName, v.toBool());
+        } else {
+            qWarning() << "no KoColor serialization for QVariant type:" << v.type();
+        }
+        colorElt.appendChild(e);
+    }
+
 }
 
 void KoColor::setOpacity(quint8 alpha)
@@ -352,7 +377,10 @@ KoColor KoColor::fromXML(const QDomElement& elt, const QString& channelDepthId, 
             profileName.clear();
         }
     } else {
-        profileName = KoColorSpaceRegistry::instance()->p709SRGBProfile()->name();
+        const KoColorProfile *profile = KoColorSpaceRegistry::instance()->p709SRGBProfile();
+        if (profile) {
+            profileName = profile->name();
+        }
     }
     const KoColorSpace* cs = KoColorSpaceRegistry::instance()->colorSpace(modelId, channelDepthId, profileName);
     if (cs == 0) {
@@ -365,6 +393,30 @@ KoColor KoColor::fromXML(const QDomElement& elt, const QString& channelDepthId, 
         KoColor c(cs);
         // TODO: Provide a way for colorFromXML() to notify the caller if parsing failed. Currently it returns default values on failure.
         cs->colorFromXML(c.data(), elt);
+
+        QDomElement e = elt;
+        while (!e.nextSiblingElement("metadata").isNull()) {
+            e = e.nextSiblingElement("metadata");
+
+            const QString name = e.attribute("name");
+            const QString type = e.attribute("type");
+            const QString value = e.text();
+            QVariant v;
+            if (type == "string") {
+                v = KisDomUtils::toString(e.attribute("value"));
+                c.addMetadata(name , v);
+            } else if (type == "int") {
+                v = KisDomUtils::toInt(e.attribute("value"));
+                c.addMetadata(name , v);
+            } else if (type == "double") {
+                v = KisDomUtils::toDouble(e.attribute("value"));
+                c.addMetadata(name , v);
+            }  else if (type == "bool") {
+                v = KisDomUtils::toInt(e.attribute("value"));
+                c.addMetadata(name , v);
+            }
+
+        }
         return c;
     } else {
         *ok = false;
@@ -410,7 +462,12 @@ QString KoColor::toSVG11(QHash<QString, const KoColorProfile *> *profileList) co
     channelValues.fill(0.0);
     colorSpace()->normalisedChannelsValue(data(), channelValues);
 
-    bool sRGB = (colorSpace()->profile()->uniqueId() == KoColorSpaceRegistry::instance()->p709SRGBProfile()->uniqueId());
+    bool sRGB = false;
+    if (colorSpace() && colorSpace()->profile()
+            && colorSpace()->profile()->getColorPrimaries() == ColorPrimaries::PRIMARIES_ITU_R_BT_709_5
+            && colorSpace()->profile()->getTransferCharacteristics() != TransferCharacteristics::TRC_LINEAR) {
+        sRGB = true;
+    }
 
     // We don't write a icc-color definition for XYZ and 8bit sRGB.
     if (!(sRGB && colorSpace()->colorDepthId() == Integer8BitsColorDepthID) &&
@@ -438,7 +495,8 @@ QString KoColor::toSVG11(QHash<QString, const KoColorProfile *> *profileList) co
             iccColor.append(lab.attribute("L", "0.0"));
             iccColor.append(lab.attribute("a", "0.0"));
             iccColor.append(lab.attribute("b", "0.0"));
-        } else {
+        }
+        else {
             for (int i = 0; i < channelValues.size(); i++) {
                 int location = KoChannelInfo::displayPositionToChannelIndex(i, colorSpace()->channels());
                 if (i != int(colorSpace()->alphaPos())) {
@@ -585,6 +643,21 @@ QString KoColor::toQString(const KoColor &color)
         ls << color.colorSpace()->channelValueText(color.data(), realIndex);
     }
     return ls.join(" ");
+}
+
+void KoColor::addMetadata(QString key, QVariant value)
+{
+    m_metadata.insert(key, value);
+}
+
+QMap<QString, QVariant> KoColor::metadata() const
+{
+    return m_metadata;
+}
+
+void KoColor::clearMetadata()
+{
+    m_metadata.clear();
 }
 
 QDebug operator<<(QDebug dbg, const KoColor &color)

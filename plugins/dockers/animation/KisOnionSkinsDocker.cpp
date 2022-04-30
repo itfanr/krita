@@ -21,6 +21,7 @@
 #include "kis_action_manager.h"
 #include "kis_action.h"
 #include <KoColorSpaceRegistry.h>
+#include "KisMainWindow.h"
 
 #include "kis_equalizer_widget.h"
 #include "kis_color_label_button.h"
@@ -78,11 +79,11 @@ KisOnionSkinsDocker::KisOnionSkinsDocker(QWidget *parent) :
         m_filterButtonGroup->setMinimumRequiredChecked(0);
         QWidget* filterButtonContainer = ui->colorFilterGroupbox;
         QLayout* filterButtonLayout = ui->filterButtons;
-        filterButtonLayout->setSpacing(0);
+        filterButtonLayout->setSpacing(2);
         QVector<QColor> availableColors = scm.allColorLabels();
         QSet<int> viableColors;
         for (int i = 0; i < availableColors.count(); i++) {
-            KisColorLabelButton* colorLabelButton = new KisColorLabelButton(availableColors[i], 24, filterButtonContainer);
+            KisColorLabelButton* colorLabelButton = new KisColorLabelButton(availableColors[i], 22, filterButtonContainer);
             filterButtonLayout->addWidget(colorLabelButton);
             m_filterButtonGroup->addButton(colorLabelButton, i);
             colorLabelButton->installEventFilter(m_dragFilter);

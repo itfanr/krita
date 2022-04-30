@@ -214,7 +214,7 @@ void readDescriptor(QIODevice &device, const QString &key, QDomElement *parent, 
 }
 
 template<psd_byte_order byteOrder>
-QImage readVirtualArrayList(QIODevice &device, int numPlanes)
+QImage readVirtualArrayList(QIODevice &device, int numPlanes, const QVector<QRgb> &palette)
 {
     using namespace KisAslReaderUtils;
 
@@ -303,17 +303,16 @@ QImage readVirtualArrayList(QIODevice &device, int numPlanes)
             throw ASLParseException("VAList: two pixel depths of the plane are not equal (it is not documented)!");
         }
 
-        if (pixelDepth1 != 8 && pixelDepth1 != 16) {
+        if (pixelDepth1 != 1 && pixelDepth1 != 8 && pixelDepth1 != 16) {
             throw ASLParseException(QString("VAList: unsupported pixel depth: %1!").arg(pixelDepth1));
         }
 
-        const int channelSize = pixelDepth1 == 8 ? 1 : 2;
+        const int channelSize = (pixelDepth1 == 1 || pixelDepth1 == 8) ? 1 : 2;
 
         const int dataLength = planeRect.width() * planeRect.height() * channelSize;
 
         if (useCompression == psd_compression_type::Uncompressed) {
-            dataPlanes[i] = device.read(dataLength);
-
+            dataPlanes[i] = device.read(arrayPlaneLength - 23);
         } else if (useCompression == psd_compression_type::RLE) {
             const int numRows = planeRect.height();
 
@@ -335,7 +334,10 @@ QImage readVirtualArrayList(QIODevice &device, int numPlanes)
                     throw ASLParseException("VAList: failed to read compressed data!");
                 }
 
-                QByteArray uncompressedData = Compression::uncompress(planeRect.width() * channelSize, compressedData, psd_compression_type::RLE);
+                dbgFile << "Going to decompress the pattern";
+
+                QByteArray uncompressedData =
+                    Compression::uncompress(planeRect.width() * channelSize, compressedData, psd_compression_type::RLE);
 
                 if (uncompressedData.size() != planeRect.width()) {
                     throw ASLParseException("VAList: failed to decompress data!");
@@ -343,6 +345,9 @@ QImage readVirtualArrayList(QIODevice &device, int numPlanes)
 
                 dataPlanes[i].append(uncompressedData);
             }
+        } else if (useCompression == psd_compression_type::ZIP) {
+            QByteArray compressedBytes = device.read(arrayPlaneLength - 23);
+            dataPlanes[i] = Compression::uncompress(dataLength, compressedBytes, psd_compression_type::ZIP);
         } else {
             throw ASLParseException("VAList: ZIP compression is not implemented yet!");
         }
@@ -351,20 +356,37 @@ QImage readVirtualArrayList(QIODevice &device, int numPlanes)
             throw ASLParseException("VAList: failed to read/uncompress data plane!");
         }
 
+        if (device.pos() != nextPos) {
+            warnFile << "VAList: Data is left out from reading"
+                     << "(" << device.pos() << ")";
+        }
         device.seek(nextPos);
     }
 
+    QImage::Format format{};
+    
+    if (pixelDepth1 == 1 || !palette.isEmpty()) {
+        if (palette.isEmpty()) {
+            format = QImage::Format_Grayscale8;
+        } else {
+            format = QImage::Format_Indexed8;
+        }
+    } else if (pixelDepth1 == 8) {
+        format = QImage::Format_ARGB32;
+    } else {
 #if QT_VERSION >= QT_VERSION_CHECK(5, 12, 0)
-    const QImage::Format format = pixelDepth1 == 8 ? QImage::Format_ARGB32 : QImage::Format_RGBA64;
+        format = QImage::Format_RGBA64;
 #else
-    if (pixelDepth1 != 8) {
         throw ASLParseException("Qt does not support RGBA64!");
+#endif
     }
 
-    const QImage::Format format = QImage::Format_ARGB32;
-#endif
-
     QImage image(arrayRect.size(), format);
+
+    if (format == QImage::Format_Indexed8) {
+        image.setColorTable(palette);
+    }
+    dbgFile << "Loading the data into an image of format" << format << arrayRect << "(" << device.pos() << ")";
 
     const int dataLength = arrayRect.width() * arrayRect.height();
 
@@ -377,6 +399,16 @@ QImage readVirtualArrayList(QIODevice &device, int numPlanes)
                 *dstPtr++ = dataPlanes[plane][i];
             }
             *dstPtr++ = 0xFF;
+        }
+    } else if (format == QImage::Format_Indexed8 || format == QImage::Format_Grayscale8) {
+        const auto *dataPlane = reinterpret_cast<const quint8 *>(dataPlanes[0].constData());
+
+        for (int x = 0; x < arrayRect.height(); x++) {
+            quint8 *dstPtr = image.scanLine(x);
+
+            for (int y = 0; y < arrayRect.width(); y++) {
+                *dstPtr++ = dataPlane[x * arrayRect.width() + y];
+            }
         }
     } else {
         quint16 *dstPtr = reinterpret_cast<quint16 *>(image.bits());
@@ -422,16 +454,26 @@ qint64 readPattern(QIODevice &device, QDomElement *parent, QDomDocument *doc)
     quint32 patternImageMode = GARBAGE_VALUE_MARK;
     SAFE_READ_EX(byteOrder, device, patternImageMode);
 
+    dbgFile << "Pattern format:" << patternImageMode << "(" << device.pos() << ")";
+
     quint16 patternHeight = GARBAGE_VALUE_MARK;
     SAFE_READ_EX(byteOrder, device, patternHeight);
+
+    dbgFile << "Pattern height:" << patternHeight << "(" << device.pos() << ")";
 
     quint16 patternWidth = GARBAGE_VALUE_MARK;
     SAFE_READ_EX(byteOrder, device, patternWidth);
 
+    dbgFile << "Pattern width:" << patternHeight << "(" << device.pos() << ")";
+
     QString patternName;
     psdread_unicodestring<byteOrder>(device, patternName);
 
+    dbgFile << "Pattern name:" << patternName << "(" << device.pos() << ")";
+
     QString patternUuid = readPascalString<byteOrder>(device);
+
+    dbgFile << "Pattern UUID:" << patternUuid << "(" << device.pos() << ")";
 
     // dbgKrita << "--";
     // dbgKrita << ppVar(patternSize);
@@ -447,6 +489,7 @@ qint64 readPattern(QIODevice &device, QDomElement *parent, QDomDocument *doc)
     switch (mode) {
     case MultiChannel:
     case Grayscale:
+    case Indexed:
         numPlanes = 1;
         break;
     case RGB:
@@ -456,6 +499,37 @@ qint64 readPattern(QIODevice &device, QDomElement *parent, QDomDocument *doc)
         QString msg = QString("Unsupported image mode: %1!").arg(mode);
         throw ASLParseException(msg);
     }
+    }
+
+    QVector<QRgb> palette;
+
+    palette.resize(256);
+
+    if (mode == Indexed) {
+        for(auto i = 0; i < 256; i++) {
+            quint8 r, g, b;
+            psdread<byteOrder>(device, r);
+            psdread<byteOrder>(device, g);
+            psdread<byteOrder>(device, b);
+            palette[i] = qRgb(r, g, b);
+        }
+
+        dbgFile << "Palette: " << palette << "(" << device.pos() << ")";
+
+        // XXX: there's no way to detect this. Assume the 772 length
+        quint16 validColours = GARBAGE_VALUE_MARK;
+        psdread<byteOrder>(device, validColours);
+        palette.resize(validColours);
+        dbgFile << "Palette real size:" << validColours << "(" << device.pos() << ")";
+
+        // Set transparent colour
+        quint16 transparentIdx = GARBAGE_VALUE_MARK;
+        psdread<byteOrder>(device, transparentIdx);
+        dbgFile << "Transparent index:" << transparentIdx << "(" << device.pos() << ")";
+
+        palette[transparentIdx] = qRgba(qRed(palette[transparentIdx]),
+                                        qGreen(palette[transparentIdx]),
+                                        qBlue(palette[transparentIdx]), 0x00);
     }
 
     /**
@@ -474,7 +548,7 @@ qint64 readPattern(QIODevice &device, QDomElement *parent, QDomDocument *doc)
     { // ensure we don't keep resources for too long
         // XXX: this QImage should tolerate 16-bit and higher
         QString fileName = QString("%1.pat").arg(patternUuid);
-        QImage patternImage = readVirtualArrayList<byteOrder>(device, numPlanes);
+        QImage patternImage = readVirtualArrayList<byteOrder>(device, numPlanes, palette);
         KoPattern realPattern(patternImage, patternName, fileName);
         realPattern.savePatToDevice(&patternBuf);
     }
@@ -644,6 +718,48 @@ QDomDocument readLfx2PsdSectionImpl(QIODevice &device)
 
     } catch (KisAslReaderUtils::ASLParseException &e) {
         warnKrita << "WARNING: PSD: lfx2 section:" << e.what();
+    }
+
+    return doc;
+}
+
+template<psd_byte_order byteOrder = psd_byte_order::psdBigEndian>
+QDomDocument readFillLayerImpl(QIODevice &device);
+
+QDomDocument KisAslReader::readFillLayer(QIODevice &device, psd_byte_order byteOrder)
+{
+    switch (byteOrder) {
+    case psd_byte_order::psdLittleEndian:
+        return readFillLayerImpl<psd_byte_order::psdLittleEndian>(device);
+    default:
+        return readFillLayerImpl(device);
+    }
+}
+
+template<psd_byte_order byteOrder>
+QDomDocument readFillLayerImpl(QIODevice &device)
+{
+    QDomDocument doc;
+
+    if (device.isSequential()) {
+        warnKrita << "WARNING: *** KisAslReader::readFillLayerPsdSection: the supplied"
+                  << "IO device is sequential. Chances are that"
+                  << "the fill config will *not* be loaded correctly!";
+    }
+    try {
+
+        {
+            quint32 descriptorVersion = GARBAGE_VALUE_MARK;
+            SAFE_READ_SIGNATURE_EX(byteOrder, device, descriptorVersion, 16);
+        }
+
+        QDomElement root = doc.createElement("asl");
+        doc.appendChild(root);
+
+        Private::readDescriptor<byteOrder>(device, "", &root, &doc);
+
+    } catch (KisAslReaderUtils::ASLParseException &e) {
+        warnKrita << "WARNING: PSD: SoCo section:" << e.what();
     }
 
     return doc;

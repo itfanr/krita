@@ -126,8 +126,12 @@ void KisToolMeasure::paint(QPainter& gc, const KoViewConverter &converter)
 }
 void KisToolMeasure::showDistanceAngleOnCanvas()
 {
-    KisCanvas2 *kisCanvas =dynamic_cast<KisCanvas2*>(canvas());
-    kisCanvas->viewManager()->showFloatingMessage(i18n("%1 %2\n%3°",m_optionsWidget->m_distanceLabel->text(),m_optionsWidget->m_unit.symbol(),QString::number(angle(),'f',1)),QIcon(), 2000, KisFloatingMessage::High);
+    KisCanvas2 *kisCanvas = qobject_cast<KisCanvas2*>(canvas());
+    QString message = i18nc("%1=distance %2=unit of distance %3=angle in degrees", "%1 %2\n%3°",
+                            m_optionsWidget->m_distanceLabel->text(),
+                            m_optionsWidget->m_unit.symbol(),
+                            QString::number(angle(),'f',1));
+    kisCanvas->viewManager()->showFloatingMessage(message, QIcon(), 2000, KisFloatingMessage::High);
 }
 void KisToolMeasure::beginPrimaryAction(KoPointerEvent *event)
 {
@@ -177,8 +181,8 @@ void KisToolMeasure::endPrimaryAction(KoPointerEvent *event)
 QWidget* KisToolMeasure::createOptionWidget()
 {
     if (!currentImage())
-        return 0;
-    m_optionsWidget = new KisToolMeasureOptionsWidget(0, currentImage()->xRes());
+        return nullptr;
+    m_optionsWidget = new KisToolMeasureOptionsWidget(nullptr, currentImage()->xRes());
 
     // See https://bugs.kde.org/show_bug.cgi?id=316896
     QWidget *specialSpacer = new QWidget(m_optionsWidget);

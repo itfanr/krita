@@ -36,6 +36,8 @@ public:
     bool loadFromDevice(QIODevice *dev, KisResourcesInterfaceSP resourcesInterface) override;
     bool saveToDevice(QIODevice *dev) const override;
 
+    bool isPiercedApprox() const override;
+
 public:
 
     qreal userEffectiveSize() const override;
@@ -62,7 +64,7 @@ public:
         qreal softnessFactor = DEFAULT_SOFTNESS_FACTOR,
         qreal lightnessStrength = DEFAULT_LIGHTNESS_STRENGTH) const override;
 
-    QPainterPath outline() const override;
+    QPainterPath outline(bool forcePreciseOutline = false) const override;
 
     void notifyBrushIsGoingToBeClonedForStroke() override;
 
@@ -80,7 +82,7 @@ public:
     bool supportsCaching() const override;
 private:
 
-    QImage createBrushPreview();
+    QImage createBrushPreview(int maxSize = -1);
 
 private:
     struct Private;

@@ -166,7 +166,7 @@ struct Q_DECL_HIDDEN KisLayer::Private
     }
 
     QBitArray channelFlags;
-    KisMetaData::Store* metaDataStore;
+    KisMetaData::Store* metaDataStore {nullptr};
     KisCloneLayersList clonesList;
 
     KisPSDLayerStyleSP layerStyle;
@@ -331,6 +331,7 @@ void KisLayer::disableAlphaChannel(bool disable)
 
 bool KisLayer::alphaChannelDisabled() const
 {
+    KIS_SAFE_ASSERT_RECOVER_RETURN_VALUE(colorSpace(), false);
     QBitArray flags = colorSpace()->channelFlags(false, true) & m_d->channelFlags;
     return flags.count(true) == 0 && !m_d->channelFlags.isEmpty();
 }
@@ -760,7 +761,7 @@ void KisLayer::buildProjectionUpToNode(KisPaintDeviceSP projection, KisNodeSP la
 
     KisPaintDeviceSP originalDevice = original();
 
-    KIS_ASSERT_RECOVER_RETURN(needProjection() || hasEffectMasks());
+    KIS_SAFE_ASSERT_RECOVER_RETURN(needProjection() || hasEffectMasks());
 
     if (!changeRect.isEmpty()) {
         applyMasks(originalDevice, projection,

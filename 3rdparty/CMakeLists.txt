@@ -103,7 +103,8 @@ if (WIN32)
     if (NOT OpenSSL_FOUND)
         set (OPENSSL_DEP ext_openssl)
     endif()
-          
+elseif (APPLE OR ANDROID)
+    set (ZLIB_DEP ext_zlib)
 endif (WIN32)
 
 if (WIN32)
@@ -135,6 +136,22 @@ if (MINGW)
 	else ()
 		message(WARNING "Linker Security Flags not enabled!")
 	endif ()
+
+    # Clang does not generate DWARF aranges data by default, which makes
+    # DrMingw not able to parse the DWARF debug symbols. Add -gdwarf-aranges
+    # explicitly.
+    # See: https://github.com/jrfonseca/drmingw/issues/42#issuecomment-516614561
+    if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -gdwarf-aranges")
+    endif ()
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -gdwarf-aranges")
+    endif ()
+
+    set(GLOBAL_PROFILE ${GLOBAL_PROFILE}
+        -DCMAKE_C_FLAGS_RELWITHDEBINFO=${CMAKE_C_FLAGS_RELWITHDEBINFO}
+        -DCMAKE_CXX_FLAGS_RELWITHDEBINFO=${CMAKE_CXX_FLAGS_RELWITHDEBINFO}
+    )
 elseif (MSVC)
 	set(SECURITY_C_FLAGS ${CMAKE_C_FLAGS})
 	set(SECURITY_CXX_FLAGS ${CMAKE_CXX_FLAGS})
@@ -193,23 +210,22 @@ if (APPLE)
 endif ()
 
 if (ANDROID)
-  # HACK: copied from ECM, this makes sure that we don't build an executable (kf5s do that), but a DSO.
-  set(CMAKE_CXX_LINK_EXECUTABLE "<CMAKE_CXX_COMPILER> <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>")
-
   # Increase the stack size to match MinGW's. Prevents crashes with GMic.
   set(SECURITY_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,stack-size=4194304")
   set(SECURITY_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,stack-size=4194304")
   set(SECURITY_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-z,stack-size=4194304")
 
+  # stl must be consistent: https://github.com/android/ndk/issues/1441
   set (GLOBAL_PROFILE ${GLOBAL_PROFILE}
                      -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
                      -DANDROID_PLATFORM=${ANDROID_PLATFORM}
                      -DANDROID_ABI=${ANDROID_ABI}
+                     -DANDROID_STL=${ANDROID_STL}
                      -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-                     -DCMAKE_CXX_LINK_EXECUTABLE=${CMAKE_CXX_LINK_EXECUTABLE}
                      -DCMAKE_EXE_LINKER_FLAGS=${SECURITY_EXE_LINKER_FLAGS}
                      -DCMAKE_SHARED_LINKER_FLAGS=${SECURITY_SHARED_LINKER_FLAGS}
                      -DCMAKE_MODULE_LINKER_FLAGS=${SECURITY_MODULE_LINKER_FLAGS}
+                     -DLOCALE_INSTALL_DIR=${LOCALE_INSTALL_DIR}
                      )
 
   # see: https://github.com/android/ndk/issues/929
@@ -347,6 +363,7 @@ add_subdirectory( ext_libraw )
 if (ANDROID)
   # gettext replacement
   add_subdirectory(ext_libintl-lite)
+  add_subdirectory(ext_libunwindstack-ndk)
 endif()
 add_subdirectory( ext_frameworks )
 if (ENABLE_PYTHON_DEPS OR NOT MINGW)

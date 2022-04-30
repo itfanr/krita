@@ -58,11 +58,6 @@ void KisToolPolylineBase::requestStrokeCancellation()
     cancelStroke();
 }
 
-bool KisToolPolylineBase::hasUserInteractionRunning() const
-{
-    return !m_points.isEmpty();
-}
-
 void KisToolPolylineBase::beginPrimaryAction(KoPointerEvent *event)
 {
     Q_UNUSED(event);
@@ -92,6 +87,7 @@ void KisToolPolylineBase::beginPrimaryAction(KoPointerEvent *event)
         m_points.append(m_points.first());
         endStroke();
     } else {
+        beginShape();
         m_dragging = true;
     }
 }
@@ -172,6 +168,8 @@ void KisToolPolylineBase::undoSelection()
         }
         if (m_points.size() > 0) {
             m_dragStart = m_points.last();
+        } else {
+            cancelStroke();
         }
     }
 }
@@ -228,13 +226,6 @@ void KisToolPolylineBase::endStroke()
 {
     if (!m_dragging) return;
 
-    NodePaintAbility paintability = nodePaintAbility();
-    if ((paintability != KisToolPaint::PAINT && paintability != KisToolPaint::VECTOR)
-        || !nodeEditable()) {
-        cancelStroke();
-        return;
-    }
-
     m_dragging = false;
     if(m_points.count() > 1) {
         finishPolyline(m_points);
@@ -242,6 +233,7 @@ void KisToolPolylineBase::endStroke()
     m_points.clear();
     m_closeSnappingActivated = false;
     updateArea();
+    endShape();
 }
 
 void KisToolPolylineBase::cancelStroke()
@@ -252,6 +244,7 @@ void KisToolPolylineBase::cancelStroke()
     m_points.clear();
     m_closeSnappingActivated = false;
     updateArea();
+    endShape();
 }
 
 QRectF KisToolPolylineBase::dragBoundingRect()
@@ -259,15 +252,4 @@ QRectF KisToolPolylineBase::dragBoundingRect()
     QRectF rect = pixelToView(QRectF(m_dragStart, m_dragEnd).normalized());
     rect.adjust(-PREVIEW_LINE_WIDTH, -PREVIEW_LINE_WIDTH, PREVIEW_LINE_WIDTH, PREVIEW_LINE_WIDTH);
     return rect;
-}
-
-void KisToolPolylineBase::listenToModifiers(bool listen)
-{
-    Q_UNUSED(listen);
-}
-
-bool KisToolPolylineBase::listeningToModifiers()
-{
-    //Never grab modifier keys
-    return false;
 }

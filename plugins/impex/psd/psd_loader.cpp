@@ -27,8 +27,11 @@
 #include <kis_paint_device.h>
 #include <kis_transaction.h>
 #include <kis_transparency_mask.h>
+#include <kis_generator_layer.h>
+#include <kis_generator_registry.h>
 
 #include <kis_asl_layer_style_serializer.h>
+#include <asl/kis_asl_xml_parser.h>
 #include "KisResourceServerProvider.h"
 
 #include "psd.h"
@@ -151,6 +154,31 @@ KisImportExportErrorCode PSDLoader::decode(QIODevice &io)
         m_image->addAnnotation(annotation);
     }
 
+    // Load embedded patterns early for fill layers.
+
+    const QVector<QDomDocument> &embeddedPatterns =
+        layerSection.globalInfoSection.embeddedPatterns;
+
+    const QString storageLocation = m_doc->embeddedResourcesStorageId();
+    KisResourceModel stylesModel(ResourceType::LayerStyles);
+    KisResourceModel patternsModel(ResourceType::Patterns);
+    KisResourceModel gradientsModel(ResourceType::Gradients);
+
+    KisAslLayerStyleSerializer serializer;
+    if (!embeddedPatterns.isEmpty()) {
+        Q_FOREACH (const QDomDocument &doc, embeddedPatterns) {
+            serializer.registerPSDPattern(doc);
+        }
+        Q_FOREACH (KoPatternSP pattern, serializer.patterns()) {
+            if (pattern && pattern->valid()) {
+                patternsModel.addResource(pattern, storageLocation);
+                dbgFile << "Loaded embedded pattern: " << pattern->name();
+            }
+            else {
+                qWarning() << "Invalid or empty pattern" << pattern;
+            }
+        }
+    }
 
     // Read the projection into our single layer. Since we only read the projection when
     // we have just one layer, we don't need to later on apply the alpha channel of the
@@ -185,6 +213,7 @@ KisImportExportErrorCode PSDLoader::decode(QIODevice &io)
 
     typedef QPair<QDomDocument, KisLayerSP> LayerStyleMapping;
     QVector<LayerStyleMapping> allStylesXml;
+    using namespace std::placeholders;
 
     // read the channels for the various layers
     for(int i = 0; i < layerSection.nLayers; ++i) {
@@ -257,10 +286,71 @@ KisImportExportErrorCode PSDLoader::decode(QIODevice &io)
                           << "    " << ppVar(groupStack.size());
                 continue;
             }
-        }
-        else {
-            KisPaintLayerSP layer = new KisPaintLayer(m_image, layerRecord->layerName, layerRecord->opacity);
+        } else {
+            KisLayerSP layer;
+            if (!layerRecord->infoBlocks.fillConfig.isNull()) {
+                KisFilterConfigurationSP cfg;
+                QDomDocument fillConfig;
+                KisAslCallbackObjectCatcher catcher;
+                if (layerRecord->infoBlocks.fillType == psd_fill_gradient) {
+                    cfg = KisGeneratorRegistry::instance()->value("gradient")->defaultConfiguration(KisGlobalResourcesInterface::instance());
+
+                    psd_layer_gradient_fill fill;
+                    fill.imageWidth = m_image->width();
+                    fill.imageHeight = m_image->height();
+                    catcher.subscribeGradient("/null/Grad", std::bind(&psd_layer_gradient_fill::setGradient, &fill, _1));
+                    catcher.subscribeBoolean("/null/Dthr", std::bind(&psd_layer_gradient_fill::setDither, &fill, _1));
+                    catcher.subscribeBoolean("/null/Rvrs", std::bind(&psd_layer_gradient_fill::setReverse, &fill, _1));
+                    catcher.subscribeUnitFloat("/null/Angl", "#Ang", std::bind(&psd_layer_gradient_fill::setAngle, &fill, _1));
+                    catcher.subscribeEnum("/null/Type", "GrdT", std::bind(&psd_layer_gradient_fill::setType, &fill, _1));
+                    catcher.subscribeBoolean("/null/Algn", std::bind(&psd_layer_gradient_fill::setAlignWithLayer, &fill, _1));
+                    catcher.subscribeUnitFloat("/null/Scl ", "#Prc", std::bind(&psd_layer_gradient_fill::setScale, &fill, _1));
+                    catcher.subscribePoint("/null/Ofst", std::bind(&psd_layer_gradient_fill::setOffset, &fill, _1));
+                    KisAslXmlParser parser;
+                    parser.parseXML(layerRecord->infoBlocks.fillConfig, catcher);
+                    fillConfig = fill.getFillLayerConfig();
+
+                } else if (layerRecord->infoBlocks.fillType == psd_fill_pattern) {
+                    cfg = KisGeneratorRegistry::instance()->value("pattern")->defaultConfiguration(KisGlobalResourcesInterface::instance());
+
+                    psd_layer_pattern_fill fill;
+                    catcher.subscribeUnitFloat("/null/Angl", "#Ang", std::bind(&psd_layer_pattern_fill::setAngle, &fill, _1));
+                    catcher.subscribeUnitFloat("/null/Scl ", "#Prc", std::bind(&psd_layer_pattern_fill::setScale, &fill, _1));
+                    catcher.subscribeBoolean("/null/Algn", std::bind(&psd_layer_pattern_fill::setAlignWithLayer, &fill, _1));
+                    catcher.subscribePoint("/null/phase", std::bind(&psd_layer_pattern_fill::setOffset, &fill, _1));
+                    catcher.subscribePatternRef("/null/Ptrn", std::bind(&psd_layer_pattern_fill::setPatternRef, &fill, _1, _2));
+
+                    KisAslXmlParser parser;
+                    parser.parseXML(layerRecord->infoBlocks.fillConfig, catcher);
+                    fillConfig = fill.getFillLayerConfig();
+
+                } else {
+                    cfg = KisGeneratorRegistry::instance()->value("color")->defaultConfiguration(KisGlobalResourcesInterface::instance());
+
+                    psd_layer_solid_color fill;
+                    fill.cs = m_image->colorSpace();
+                    catcher.subscribeColor("/null/Clr ", std::bind(&psd_layer_solid_color::setColor, &fill, _1));
+                    KisAslXmlParser parser;
+                    parser.parseXML(layerRecord->infoBlocks.fillConfig, catcher);
+
+                    fillConfig = fill.getFillLayerConfig();
+                }
+                cfg->fromXML(fillConfig.firstChildElement());
+                cfg->createLocalResourcesSnapshot();
+                KisGeneratorLayerSP genlayer = new KisGeneratorLayer(m_image, layerRecord->layerName, cfg, m_image->globalSelection());
+                genlayer->setFilter(cfg);
+                layer = genlayer;
+
+            } else {
+                layer = new KisPaintLayer(m_image, layerRecord->layerName, layerRecord->opacity);
+                if (!layerRecord->readPixelData(io, layer->paintDevice())) {
+                    dbgFile << "failed reading channels for layer: " << layerRecord->layerName << layerRecord->error;
+                    return ImportExportCodes::FileFormatIncorrect;
+                }
+            }
             layer->setCompositeOpId(psd_blendmode_to_composite_op(layerRecord->blendModeKey));
+
+            layer->setColorLabelIndex(layerRecord->labelColor);
 
             const QDomDocument &styleXml = layerRecord->infoBlocks.layerStyleXml;
 
@@ -268,10 +358,6 @@ KisImportExportErrorCode PSDLoader::decode(QIODevice &io)
                 allStylesXml << LayerStyleMapping(styleXml, layer);
             }
 
-            if (!layerRecord->readPixelData(io, layer->paintDevice())) {
-                dbgFile << "failed reading channels for layer: " << layerRecord->layerName << layerRecord->error;
-                return ImportExportCodes::FileFormatIncorrect;
-            }
             if (!groupStack.isEmpty()) {
                 m_image->addNode(layer, groupStack.top());
             }
@@ -285,35 +371,27 @@ KisImportExportErrorCode PSDLoader::decode(QIODevice &io)
 
         Q_FOREACH (ChannelInfo *channelInfo, layerRecord->channelInfoRecords) {
             if (channelInfo->channelId < -1) {
-                KisTransparencyMaskSP mask = new KisTransparencyMask(m_image, i18n("Transparency Mask"));
-                mask->initSelection(newLayer);
-                if (!layerRecord->readMask(io, mask->paintDevice(), channelInfo)) {
-                    dbgFile << "failed reading masks for layer: " << layerRecord->layerName << layerRecord->error;
+                const KisGeneratorLayer *fillLayer = qobject_cast<KisGeneratorLayer *>(newLayer.data());
+                if (fillLayer) {
+                    if (!layerRecord->readMask(io, fillLayer->paintDevice(), channelInfo)) {
+                        dbgFile << "failed reading masks for generator layer: " << layerRecord->layerName << layerRecord->error;
+                    }
+                } else {
+                    KisTransparencyMaskSP mask = new KisTransparencyMask(m_image, i18n("Transparency Mask"));
+                    mask->initSelection(newLayer);
+                    if (!layerRecord->readMask(io, mask->paintDevice(), channelInfo)) {
+                        dbgFile << "failed reading masks for layer: " << layerRecord->layerName << layerRecord->error;
+                    }
+                    m_image->addNode(mask, newLayer);
                 }
-                m_image->addNode(mask, newLayer);
             }
         }
 
         lastAddedLayer = newLayer;
     }
 
-    const QVector<QDomDocument> &embeddedPatterns =
-        layerSection.globalInfoSection.embeddedPatterns;
-
-    const QString storageLocation = m_doc->embeddedResourcesStorageId();
-    KisResourceModel stylesModel(ResourceType::LayerStyles);
-    KisResourceModel patternsModel(ResourceType::Patterns);
-    KisResourceModel gradientsModel(ResourceType::Gradients);
-
     if (!allStylesXml.isEmpty()) {
         Q_FOREACH (const LayerStyleMapping &mapping, allStylesXml) {
-            KisAslLayerStyleSerializer serializer;
-
-            if (!embeddedPatterns.isEmpty()) {
-                Q_FOREACH (const QDomDocument &doc, embeddedPatterns) {
-                    serializer.registerPSDPattern(doc);
-                }
-            }
 
             serializer.readFromPSDXML(mapping.first);
 
@@ -321,12 +399,13 @@ KisImportExportErrorCode PSDLoader::decode(QIODevice &io)
                 KisPSDLayerStyleSP layerStyle = serializer.styles().first();
                 KisLayerSP layer = mapping.second;
 
-                Q_FOREACH (KoPatternSP pattern, serializer.patterns()) {
-                    patternsModel.addResource(pattern, storageLocation);
-                }
-
                 Q_FOREACH (KoAbstractGradientSP gradient, serializer.gradients()) {
-                    gradientsModel.addResource(gradient, storageLocation);
+                    if (gradient && gradient->valid()) {
+                        gradientsModel.addResource(gradient, storageLocation);
+                    }
+                    else {
+                        qWarning() << "Invalid or empty gradient" << gradient;
+                    }
                 }
 
                 layerStyle->setName(layer->name());

@@ -77,6 +77,7 @@
 #include "KisResourceLoader.h"
 #include "KisResourceLoaderRegistry.h"
 #include "kis_acyclic_signal_connector.h"
+#include "KisMainWindow.h"
 
 
 KisPaintopBox::KisPaintopBox(KisViewManager *viewManager, QWidget *parent, const char *name)
@@ -307,14 +308,20 @@ KisPaintopBox::KisPaintopBox(KisViewManager *viewManager, QWidget *parent, const
     m_cmbCompositeOp->setFixedHeight(buttonsize);
     m_cmbCompositeOp->connectBlendmodeActions(m_viewManager->actionManager());
 
+    KisWorkspaceChooser *workspacePopup = new KisWorkspaceChooser(viewManager);
     m_workspaceWidget = new KisPopupButton(this);
     m_workspaceWidget->setIcon(KisIconUtils::loadIcon("workspace-chooser"));
     m_workspaceWidget->setToolTip(i18n("Choose workspace"));
     m_workspaceWidget->setFixedSize(buttonsize, buttonsize);
     m_workspaceWidget->setIconSize(QSize(iconsize, iconsize));
-    m_workspaceWidget->setPopupWidget(new KisWorkspaceChooser(viewManager));
+    m_workspaceWidget->setPopupWidget(workspacePopup);
     m_workspaceWidget->setAutoRaise(true);
     m_workspaceWidget->setArrowVisible(false);
+
+    m_presetsChooserPopup = new KisPaintOpPresetsChooserPopup();
+    m_presetsChooserPopup->setMinimumHeight(550);
+    m_presetsChooserPopup->setMinimumWidth(450);
+    m_presetSelectorPopupButton->setPopupWidget(m_presetsChooserPopup);
 
     QHBoxLayout* baseLayout = new QHBoxLayout(this);
     m_paintopWidget = new QWidget(this);
@@ -404,6 +411,7 @@ KisPaintopBox::KisPaintopBox(KisViewManager *viewManager, QWidget *parent, const
     KisActionRegistry::instance()->propertizeAction("show_brush_presets", action);
     viewManager->actionCollection()->addAction("show_brush_presets", action);
     connect(action, SIGNAL(triggered()), m_presetSelectorPopupButton, SLOT(showPopupWidget()));
+    m_presetsChooserPopup->addAction(action);
 
     QWidget* mirrorActions = new QWidget(this);
     QHBoxLayout* mirrorLayout = new QHBoxLayout(mirrorActions);
@@ -423,6 +431,8 @@ KisPaintopBox::KisPaintopBox(KisViewManager *viewManager, QWidget *parent, const
     KisActionRegistry::instance()->propertizeAction(ResourceType::Workspaces, action);
     viewManager->actionCollection()->addAction(ResourceType::Workspaces, action);
     action->setDefaultWidget(m_workspaceWidget);
+    connect(action, SIGNAL(triggered()), m_workspaceWidget, SLOT(showPopupWidget()));
+    workspacePopup->addAction(action);
 
     if (!cfg.toolOptionsInDocker()) {
         m_toolOptionsPopup = new KisToolOptionsPopup();
@@ -445,12 +455,7 @@ KisPaintopBox::KisPaintopBox(KisViewManager *viewManager, QWidget *parent, const
     KisActionRegistry::instance()->propertizeAction("show_brush_editor", action);
     viewManager->actionCollection()->addAction("show_brush_editor", action);
     connect(action, SIGNAL(toggled(bool)), this, SLOT(togglePresetEditor()));
-
-
-    m_presetsChooserPopup = new KisPaintOpPresetsChooserPopup();
-    m_presetsChooserPopup->setMinimumHeight(550);
-    m_presetsChooserPopup->setMinimumWidth(450);
-    m_presetSelectorPopupButton->setPopupWidget(m_presetsChooserPopup);
+    m_presetsEditor->addAction(action);
 
     m_currCompositeOpID = KoCompositeOpRegistry::instance().getDefaultCompositeOp().id();
 
@@ -642,20 +647,20 @@ void KisPaintopBox::setCurrentPaintop(KisPaintOpPresetSP preset)
 
     m_optionWidget = m_paintopOptionWidgets[paintop];
 
+    Q_ASSERT(m_optionWidget && m_presetSelectorPopupButton);
+
     KisSignalsBlocker b(m_optionWidget);
 
     m_optionWidget->setImage(m_viewManager->image());
     m_optionWidget->setNode(m_viewManager->activeNode());
 
-    if (m_optionWidget) {
-        m_optionWidget->setConfigurationSafe(preset->settings());
-    }
+    m_optionWidget->setConfigurationSafe(preset->settings());
 
     m_presetsEditor->setPaintOpSettingsWidget(m_optionWidget);
 
     m_resourceProvider->setPaintOpPreset(preset);
 
-    Q_ASSERT(m_optionWidget && m_presetSelectorPopupButton);
+
 
     /// We must connect to the **uncompressed** version of the preset
     /// update signal. That is the only way we can guarantee that
@@ -1487,6 +1492,6 @@ void KisPaintopBox::slotMoveToCenterMirrorY() {
 
 void KisPaintopBox::findDefaultPresets()
 {
-    m_eraserName = "Eraser_circle";
-    m_defaultPresetName = "b)_Basic-5_Size_Opacity";
+    m_eraserName = "a) Eraser Circle";
+    m_defaultPresetName = "b) Basic-5 Size Opacity";
 }

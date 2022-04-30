@@ -268,8 +268,7 @@ public:
 
 private Q_SLOTS:
 
-    void addStorage(const QString &location);
-    void removeStorage(const QString &location);
+    void storageActiveStateChanged(const QString &location);
 
     /**
      * A special connection for KisResourceLocator, which can import
@@ -281,7 +280,7 @@ private Q_SLOTS:
      * of the model, that is, its resourceId is expected to be greater
      * than any existing resource.
      */
-    void beginExternalResourceImport(const QString &resourceType);
+    void beginExternalResourceImport(const QString &resourceType, int numResources);
 
     /**
      * \see beginExternalResourceImport
@@ -293,12 +292,12 @@ private Q_SLOTS:
      * while importing something with overwrite. In such a case the locator will
      * emit both, remove and insert signals for both the resources.
      */
-    void beginExternalResourceOverride(const QString &resourceType, int resourceId);
+    void beginExternalResourceRemove(const QString &resourceType, const QVector<int> &resourceId);
 
     /**
-     * \see beginExternalResourceOverride
+     * \see beginExternalResourceRemove
      */
-    void endExternalResourceOverride(const QString &resourceType, int resourceId);
+    void endExternalResourceRemove(const QString &resourceType);
 
     /**
      * A special connection for KisResourceLocator, which is triggered when the

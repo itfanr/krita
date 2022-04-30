@@ -71,10 +71,10 @@ public Q_SLOTS:
 
     void slotChangeActivePaintop(int);
 
-    /*update the priority of a colour in m_colorList, used only by m_popupPalette*/
+    /*update the priority of a color in m_colorList, used only by m_popupPalette*/
     void slotUpdateRecentColor(int);
 
-    /*add a colour to m_colorList, used by KisCanvasResourceProvider*/
+    /*add a color to m_colorList, used by KisCanvasResourceProvider*/
     void slotAddRecentColor(const KoColor&);
 
     void slotChangeFGColorSelector(KoColor c);
@@ -93,23 +93,23 @@ private:
 
     void init();
 
-    KisPaintopBox *m_paintopBox;
+    KisPaintopBox *m_paintopBox {nullptr};
 
     class ColorDataList;
-    ColorDataList *m_colorList;
+    ColorDataList *m_colorList {nullptr};
 
     void saveFavoritePresets();
 
     KoColor m_bgColor;
     KisTagSP m_currentTag;
 
-    bool m_initialized;
+    bool m_initialized {false};
 
-    int m_maxPresets;
+    int m_maxPresets {0};
 
-    KisTagModel* m_tagModel;
-    KisTagFilterResourceProxyModel* m_resourcesProxyModel;
-    KisResourceModel* m_resourceModel;
+    KisTagModel* m_tagModel {nullptr};
+    KisTagFilterResourceProxyModel* m_resourcesProxyModel {nullptr};
+    KisResourceModel* m_resourceModel {nullptr};
 
 };
 

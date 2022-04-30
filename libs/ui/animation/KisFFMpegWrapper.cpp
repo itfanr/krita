@@ -94,7 +94,7 @@ void KisFFMpegWrapper::startNonBlocking(const KisFFMpegWrapperSettings &settings
     
         progressText.replace("[progress]", "0");
     
-        m_progress = toQShared(new QProgressDialog(progressText, "", 0, 0, KisPart::instance()->currentMainwindow()));
+        m_progress = toQShared(new QProgressDialog(progressText, "", 0, 0, KisPart::instance()->currentMainwindowAsQWidget()));
 
         m_progress->setWindowModality(Qt::ApplicationModal);
         m_progress->setCancelButton(0);
@@ -193,6 +193,30 @@ void KisFFMpegWrapper::updateProgressDialog(int progressValue) {
     if (m_processSettings.totalFrames > 0) m_progress->setValue(100 * progressValue / m_processSettings.totalFrames);
 
     QApplication::processEvents();
+}
+
+bool KisFFMpegWrapper::ffprobeCheckStreamsValid(const QJsonObject& ffprobeJsonObj, const QString& ffprobeSTDERR)
+{
+    // Sanity checks..
+    KIS_SAFE_ASSERT_RECOVER_RETURN_VALUE(ffprobeJsonObj.contains("streams"), false);
+
+    QRegularExpression invalidStreamRX("(?:Unsupported codec with id .+? for input stream|Could not find codec parameters for stream) ([0-9]+)");
+    QRegularExpressionMatchIterator invalidStreamMatchList = invalidStreamRX.globalMatch(ffprobeSTDERR);
+
+    while (invalidStreamMatchList.hasNext()) {
+        QRegularExpressionMatch invalidStreamMatch = invalidStreamMatchList.next();
+
+        if (invalidStreamMatch.hasMatch()) {
+            const int invalidStreamId = invalidStreamMatch.captured(1).toInt();
+
+            // We make sure we're talking about video streams here.
+            if (ffprobeJsonObj["streams"].toArray()[invalidStreamId].toObject()["codec_type"] == "video") {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 void KisFFMpegWrapper::reset()
@@ -465,8 +489,6 @@ QJsonObject KisFFMpegWrapper::findFFProbe(const QString &customLocation)
     return findProcessPath("ffprobe", customLocation, false);
 }
 
-
-
 QJsonObject KisFFMpegWrapper::ffprobe(const QString &inputFile, const QString &ffprobePath) 
 {
     struct KisFFMpegWrapperSettings ffprobeSettings;
@@ -490,21 +512,16 @@ QJsonObject KisFFMpegWrapper::ffprobe(const QString &inputFile, const QString &f
     QJsonDocument ffprobeJsonDoc = QJsonDocument::fromJson(ffprobeSTDOUT.toUtf8());
     QJsonObject ffprobeJsonObj;
 
-    if (!ffprobeJsonDoc.isNull()) {
-        if (ffprobeJsonDoc.isObject()) {
-            ffprobeJsonObj = ffprobeJsonDoc.object();
-           
-            ffprobeJsonObj["error"] = (ffprobeSTDERR.indexOf("Unsupported codec with id") == -1) ? 0:1;
-            
-        } else {
-            dbgFile << "Document is not an object";
-            ffprobeJsonObj["error"] = 3;
-        }
-    } else {
-        dbgFile << "Invalid JSON...";
-        ffprobeJsonObj["error"] = 2;
-        
-    } 
+    if (ffprobeJsonDoc.isNull() || !ffprobeJsonDoc.isObject()) {
+        ffprobeJsonObj["error"] = FFProbeErrorCodes::INVALID_JSON;
+        return ffprobeJsonObj;
+    }
+
+    ffprobeJsonObj = ffprobeJsonDoc.object();
+
+    const bool hasValidStreams = ffprobeCheckStreamsValid(ffprobeJsonObj, ffprobeSTDERR);
+    ffprobeJsonObj["error"] = hasValidStreams ? FFProbeErrorCodes::NONE : FFProbeErrorCodes::UNSUPPORTED_CODEC;
+
     
     return ffprobeJsonObj;
 }
@@ -535,7 +552,6 @@ QJsonObject KisFFMpegWrapper::ffmpegProbe(const QString &inputFile, const QStrin
     
     dbgFile << "ffmpegProbe stdout:" << ffmpegSTDOUT;
 
-
     QJsonObject ffmpegJsonObj;
     QJsonArray ffmpegStreamsJsonArr;
     QJsonObject ffmpegFormatJsonObj;
@@ -543,13 +559,13 @@ QJsonObject KisFFMpegWrapper::ffmpegProbe(const QString &inputFile, const QStrin
     
     QStringList stdoutLines = ffmpegSTDOUT.split('\n');
     
-    ffmpegJsonObj["error"] = 4;
+    ffmpegJsonObj["error"] = FFProbeErrorCodes::UNSUPPORTED_CODEC;
     
     for (const QString &line : stdoutLines) {
         dbgFile << "ffmpeg probe stdout" << line;
-       QRegularExpression videoInfoInputRX("Duration: (\\d+):(\\d+):([\\d\\.]+),");
-    
+        QRegularExpression videoInfoInputRX("Duration: (\\d+):(\\d+):([\\d\\.]+),");
         QRegularExpressionMatch durationMatch = videoInfoInputRX.match(line);
+
         if (ffmpegFormatJsonObj.value("duration").isUndefined() && durationMatch.hasMatch()) {
             ffmpegFormatJsonObj["duration"] = QString::number( (durationMatch.captured(1).toInt() * 60 * 60)
                                                              + (durationMatch.captured(2).toInt() * 60) 
@@ -587,7 +603,7 @@ QJsonObject KisFFMpegWrapper::ffmpegProbe(const QString &inputFile, const QStrin
                     ffmpegProgressJsonObj["ffmpeg_fps"] = 0;
                 }
 
-                ffmpegJsonObj["error"] = 0;
+                ffmpegJsonObj["error"] = FFProbeErrorCodes::NONE;
                 
                 dbgFile << "ffmpegProbe stream:" << ffmpegJsonOnStreamObj;
                 
@@ -603,7 +619,6 @@ QJsonObject KisFFMpegWrapper::ffmpegProbe(const QString &inputFile, const QStrin
             }
         }
     }
-    
     
     ffmpegJsonObj.insert("streams",ffmpegStreamsJsonArr);
     ffmpegJsonObj.insert("format",ffmpegFormatJsonObj);

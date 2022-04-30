@@ -84,21 +84,6 @@ KisPainter::KisPainter(KisPaintDeviceSP device, KisSelectionSP selection)
 
 void KisPainter::init()
 {
-    d->selection = 0 ;
-    d->transaction = 0;
-    d->paintOp = 0;
-    d->sourceLayer = 0;
-    d->fillStyle = FillStyleNone;
-    d->strokeStyle = StrokeStyleBrush;
-    d->antiAliasPolygonFill = true;
-    d->progressUpdater = 0;
-    d->maskPainter = 0;
-    d->fillPainter = 0;
-    d->maskImageWidth = 255;
-    d->maskImageHeight = 255;
-    d->mirrorHorizontally = false;
-    d->mirrorVertically = false;
-    d->isOpacityUnit = true;
     d->paramInfo = KoCompositeOp::ParameterInfo();
     d->renderingIntent = KoColorConversionTransformation::internalRenderingIntent();
     d->conversionFlags = KoColorConversionTransformation::internalConversionFlags();
@@ -1683,8 +1668,8 @@ void KisPainter::drawLine(const QPointF& start, const QPointF& end, qreal width,
             if (!selectionAccessor || *selectionAccessor->oldRawData() > SELECTION_THRESHOLD) {
                 KoColor mycolor = d->paintColor;
 
-                if (antialias && AA_ > halfWidth-1.0) {
-                    mycolor.colorSpace()->multiplyAlpha(mycolor.data(), 1.0 - (AA_-(halfWidth-1.0)), 1);
+                if (antialias && AA_ > halfWidth - 1.0) {
+                    mycolor.colorSpace()->multiplyAlpha(mycolor.data(), (1.0 - (AA_ - (halfWidth - 1.0))) * 256, 1);
                 }
 
                 compositeOnePixel(accessor->rawData(), mycolor);

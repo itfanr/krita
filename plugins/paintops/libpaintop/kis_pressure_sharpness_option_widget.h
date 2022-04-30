@@ -10,6 +10,7 @@
 #include "kis_curve_option_widget.h"
 
 class KisSliderSpinBox;
+class QCheckBox;
 
 class PAINTOP_EXPORT KisPressureSharpnessOptionWidget : public KisCurveOptionWidget
 {
@@ -21,10 +22,12 @@ public:
     void readOptionSetting(const KisPropertiesConfigurationSP setting) override;
 
 private Q_SLOTS:
+    void setAlignOutlineToPixels(bool alignOutlineToPixels);
     void setThreshold(int threshold);
 
 private:
-    KisSliderSpinBox* m_softenedge;
+    QCheckBox* m_alignOutline;
+    KisSliderSpinBox* m_softenEdge;
 };
 
 #endif // KIS_PRESSURE_SHARPNESS_OPTION_WIDGET_H

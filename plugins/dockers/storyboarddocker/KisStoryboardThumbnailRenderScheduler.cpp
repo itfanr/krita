@@ -12,6 +12,7 @@
 KisStoryboardThumbnailRenderScheduler::KisStoryboardThumbnailRenderScheduler(QObject *parent)
     : QObject(parent)
     , m_renderer(new KisAsyncStoryboardThumbnailRenderer(this))
+    , m_currentFrame(-1)
 {
     //connect signals to the renderer.
     connect(m_renderer, SIGNAL(sigNotifyFrameCompleted(int,KisPaintDeviceSP)), this, SLOT(slotFrameRegenerationCompleted(int, KisPaintDeviceSP)));
@@ -57,8 +58,8 @@ void KisStoryboardThumbnailRenderScheduler::scheduleFrameForRegeneration(int fra
 
 void KisStoryboardThumbnailRenderScheduler::cancelAllFrameRendering()
 {
-    m_affectedFramesQueue.empty();
-    m_changedFramesQueue.empty();
+    m_affectedFramesQueue.clear();
+    m_changedFramesQueue.clear();
     if (m_renderer->isActive()) {
         m_renderer->cancelCurrentFrameRendering(KisAsyncAnimationRendererBase::UserCancelled);
     }

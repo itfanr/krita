@@ -346,9 +346,11 @@ QMenu* KisSelectionToolHelper::getSelectionContextMenu(KisCanvas2* canvas)
     m_contextMenu->addSection(i18n("Selection Actions"));
     m_contextMenu->addSeparator();
 
-    m_contextMenu->addAction(actionCollection->action("deselect"));
-    m_contextMenu->addAction(actionCollection->action("invert"));
     m_contextMenu->addAction(actionCollection->action("select_all"));
+    m_contextMenu->addAction(actionCollection->action("deselect"));
+    m_contextMenu->addAction(actionCollection->action("reselect"));
+    m_contextMenu->addAction(actionCollection->action("invert_selection"));
+
 
     m_contextMenu->addSeparator();
 
@@ -366,6 +368,8 @@ QMenu* KisSelectionToolHelper::getSelectionContextMenu(KisCanvas2* canvas)
         } else {
             m_contextMenu->addAction(actionCollection->action("convert_to_raster_selection"));
         }
+
+        m_contextMenu->addAction(actionCollection->action("convert_selection_to_shape"));
 
         QMenu *transformMenu = m_contextMenu->addMenu(i18n("Transform"));
         transformMenu->addAction(actionCollection->action("KisToolTransform"));

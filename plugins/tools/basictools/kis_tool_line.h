@@ -47,6 +47,7 @@ public:
     void endPrimaryAction(KoPointerEvent *event) override;
     void activate(const QSet<KoShape*> &shapes) override;
     void deactivate() override;
+    bool primaryActionSupportsHiResEvents() const override;
 
     void paint(QPainter& gc, const KoViewConverter &converter) override;
 
@@ -73,18 +74,18 @@ private:
     void cancelStroke();
 
 private:
-    bool m_showGuideline;
+    bool m_showGuideline {true};
 
     QPointF m_startPoint;
     QPointF m_endPoint;
     QPointF m_lastUpdatedPoint;
 
-    bool m_strokeIsRunning;
+    bool m_strokeIsRunning {false};
 
 
-    QCheckBox *m_chkUseSensors;
-    QCheckBox *m_chkShowPreview;
-    QCheckBox *m_chkShowGuideline;
+    QCheckBox *m_chkUseSensors {nullptr};
+    QCheckBox *m_chkShowPreview {nullptr};
+    QCheckBox *m_chkShowGuideline {nullptr};
 
     QScopedPointer<KisPaintingInformationBuilder> m_infoBuilder;
     QScopedPointer<KisToolLineHelper> m_helper;

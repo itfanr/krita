@@ -185,6 +185,17 @@ add_feature_info("Dr. Mingw" USE_DRMINGW "Enable the Dr. Mingw crash handler")
         else (USE_MINGW_HARDENING_LINKER)
             message(WARNING "Linker Security Flags not enabled!")
         endif (USE_MINGW_HARDENING_LINKER)
+
+        # Clang does not generate DWARF aranges data by default, which makes
+        # DrMingw not able to parse the DWARF debug symbols. Add -gdwarf-aranges
+        # explicitly.
+        # See: https://github.com/jrfonseca/drmingw/issues/42#issuecomment-516614561
+        if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+            set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -gdwarf-aranges")
+        endif ()
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -gdwarf-aranges")
+        endif ()
     elseif (MSVC)
         # Increase the stack size to match MinGW's. Prevents crashes with GMic.
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:4194304")
@@ -661,6 +672,8 @@ if (ANDROID)
     set (Boost_INCLUDE_DIR          ${CMAKE_CURRENT_BINARY_DIR}/i/${ANDROID_ABI}/include/boost-1_71)
     set (Boost_LIBRARY_DIR          ${CMAKE_CURRENT_BINARY_DIR}/i/${ANDROID_ABI}/lib)
     set (KF5_LIBRARIES              ${CMAKE_CURRENT_BINARY_DIR}/i/lib)
+
+    find_package(unwindstack REQUIRED)
 endif()
 
 find_package(PNG REQUIRED "1.2.6")
@@ -832,6 +845,9 @@ if (OPENCOLORIO_VERSION VERSION_GREATER_EQUAL "2.0.0")
     set(HAVE_OCIO_V2 TRUE)
 endif()
 configure_file(config-ocio.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config-ocio.h)
+if (OpenColorIO_FOUND)
+    list (APPEND ANDROID_EXTRA_LIBS ${OPENCOLORIO_LIBRARIES})
+endif()
 
 set_package_properties(PythonLibrary PROPERTIES
     DESCRIPTION "Python Library"
@@ -937,7 +953,7 @@ list (APPEND ANDROID_EXTRA_LIBS ${LCMS2_LIBRARIES})
 set(OLD_CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} )
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules )
 set(HAVE_VC FALSE)
-if (NOT (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64.*|AARCH64.*|arm64.*|ARM64.*)" 
+if (NOT (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64.*|AARCH64.*|arm64.*|ARM64.*|riscv64.*|RISCV64.*)" 
     OR CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm.*|ARM.*)"))
     find_package(Vc 1.1.0)
     set_package_properties(Vc PROPERTIES
@@ -1054,7 +1070,7 @@ if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/po AND FETCH_TRANSLATIONS)
         get_filename_component(absolute_podir ${TRANSLATIONS} ABSOLUTE)
         string(MD5 pathmd5 ${absolute_podir})
 
-        find_file (KRITA_PO_SCRIPT copy_po.py PATHS ${CMAKE_CURRENT_SOURCE_DIR}/build-tools REQUIRED)
+        find_file (KRITA_PO_SCRIPT copy_po.py PATHS ${CMAKE_CURRENT_SOURCE_DIR}/build-tools REQUIRED CMAKE_FIND_ROOT_PATH_BOTH)
         if (NOT TARGET fetch-${pathmd5})
             file(MAKE_DIRECTORY ${TRANSLATIONS})
 

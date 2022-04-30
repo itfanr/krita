@@ -38,6 +38,9 @@ private Q_SLOTS:
     void onButtonBrowseDirectoryClicked();
     void onSpinInputFpsValueChanged(int value);
     void onSpinFpsValueChanged(int value);
+    void onCheckResultPreviewToggled(bool checked);
+    void onFirstFrameSecValueChanged(int value);
+    void onCheckExtendResultToggled(bool checked);
     void onLastFrameSecValueChanged(int value);
     void onCheckResizeToggled(bool checked);
     void onSpinScaleWidthValueChanged(int value);
@@ -69,7 +72,7 @@ private:
 private:
     Q_DISABLE_COPY(RecorderExport)
     class Private;
-    Private *const d;
+    QScopedPointer<Private> d;
 };
 
 #endif // RECORDER_EXPORT_H

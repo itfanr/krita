@@ -236,7 +236,7 @@ void KisPrescaledProjectionTest::benchmarkUpdate()
                                  KoColorConversionTransformation::internalConversionFlags());
     projection.setImage(image);
 
-    // Emulate "Use same aspect as pixels"
+    // Emulate pixel size aspect canvas mapping
     converter.setResolution(image->xRes(), image->yRes());
 
     converter.setZoom(1.0);

@@ -58,6 +58,24 @@ struct KisAnimTimelineFramesView::Private
 {
     Private(KisAnimTimelineFramesView *_q)
         : q(_q)
+        , model(nullptr)
+        , horizontalRuler(nullptr)
+        , layersHeader(nullptr)
+        , addLayersButton(nullptr)
+        , pinLayerToTimelineAction(nullptr)
+        , audioOptionsButton(nullptr)
+        , colorSelector(nullptr)
+        , colorSelectorAction(nullptr)
+        , multiframeColorSelector(nullptr)
+        , multiframeColorSelectorAction(nullptr)
+        , audioOptionsMenu(nullptr)
+        , openAudioAction(nullptr)
+        , audioMuteAction(nullptr)
+        , volumeSlider(nullptr)
+        , layerEditingMenu(nullptr)
+        , existingLayersMenu(nullptr)
+        , insertKeyframeDialog(nullptr)
+        , zoomDragButton(nullptr)
         , fps(1)
         , dragInProgress(false)
         , dragWasSuccessful(false)
@@ -74,31 +92,29 @@ struct KisAnimTimelineFramesView::Private
     KisAnimTimelineTimeHeader *horizontalRuler;
     KisAnimTimelineLayersHeader *layersHeader;
 
+    QToolButton* addLayersButton;
+    KisAction* pinLayerToTimelineAction;
+
+    QToolButton* audioOptionsButton;
+
+    KisColorLabelSelectorWidgetMenuWrapper* colorSelector;
+    QWidgetAction* colorSelectorAction;
+    KisColorLabelSelectorWidgetMenuWrapper* multiframeColorSelector;
+    QWidgetAction* multiframeColorSelectorAction;
+
+    QMenu* audioOptionsMenu;
+    QAction* openAudioAction;
+    QAction* audioMuteAction;
+    KisSliderSpinBox* volumeSlider;
+
+    QMenu* layerEditingMenu;
+    QMenu* existingLayersMenu;
+    TimelineInsertKeyframeDialog* insertKeyframeDialog;
+    KisZoomButton* zoomDragButton;
+
     int fps;
     QPoint initialDragPanValue;
     QPoint initialDragPanPos;
-
-    QToolButton *addLayersButton;
-    KisAction *pinLayerToTimelineAction;
-
-    QToolButton *audioOptionsButton;
-
-    KisColorLabelSelectorWidget *colorSelector;
-    QWidgetAction *colorSelectorAction;
-    KisColorLabelSelectorWidget *multiframeColorSelector;
-    QWidgetAction *multiframeColorSelectorAction;
-
-    QMenu *audioOptionsMenu;
-    QAction *openAudioAction;
-    QAction *audioMuteAction;
-    KisSliderSpinBox *volumeSlider;
-
-    QMenu *layerEditingMenu;
-    QMenu *existingLayersMenu;
-
-    TimelineInsertKeyframeDialog *insertKeyframeDialog;
-
-    KisZoomButton *zoomDragButton;
 
     bool dragInProgress;
     bool dragWasSuccessful;
@@ -212,7 +228,7 @@ KisAnimTimelineFramesView::KisAnimTimelineFramesView(QWidget *parent)
     m_d->audioOptionsMenu->addSection(i18nc("@item:inmenu", "Audio playback is not supported in this build!"));
 #endif
 
-    m_d->openAudioAction= new QAction("XXX", this);
+    m_d->openAudioAction = new QAction("XXX", this);
     connect(m_d->openAudioAction, SIGNAL(triggered()), this, SLOT(slotSelectAudioChannelFile()));
     m_d->audioOptionsMenu->addAction(m_d->openAudioAction);
 
@@ -243,18 +259,18 @@ KisAnimTimelineFramesView::KisAnimTimelineFramesView(QWidget *parent)
 
     /********** Frame Editing Context Menu ***********************************************/
 
-    m_d->colorSelector = new KisColorLabelSelectorWidget(this);
-    MouseClickIgnore* clickIgnore = new MouseClickIgnore(this);
+    m_d->colorSelector = new KisColorLabelSelectorWidgetMenuWrapper(this);
+    MouseClickIgnore* clickIgnore = new MouseClickIgnore(m_d->colorSelector);
     m_d->colorSelector->installEventFilter(clickIgnore);
     m_d->colorSelectorAction = new QWidgetAction(this);
     m_d->colorSelectorAction->setDefaultWidget(m_d->colorSelector);
-    connect(m_d->colorSelector, &KisColorLabelSelectorWidget::currentIndexChanged, this, &KisAnimTimelineFramesView::slotColorLabelChanged);
+    connect(m_d->colorSelector->colorLabelSelector(), &KisColorLabelSelectorWidget::currentIndexChanged, this, &KisAnimTimelineFramesView::slotColorLabelChanged);
 
-    m_d->multiframeColorSelector = new KisColorLabelSelectorWidget(this);
+    m_d->multiframeColorSelector = new KisColorLabelSelectorWidgetMenuWrapper(this);
     m_d->multiframeColorSelector->installEventFilter(clickIgnore);
     m_d->multiframeColorSelectorAction = new QWidgetAction(this);
     m_d->multiframeColorSelectorAction->setDefaultWidget(m_d->multiframeColorSelector);
-    connect(m_d->multiframeColorSelector, &KisColorLabelSelectorWidget::currentIndexChanged, this, &KisAnimTimelineFramesView::slotColorLabelChanged);
+    connect(m_d->multiframeColorSelector->colorLabelSelector(), &KisColorLabelSelectorWidget::currentIndexChanged, this, &KisAnimTimelineFramesView::slotColorLabelChanged);
 
     /********** Insert Keyframes Dialog **************************************************/
 
@@ -319,7 +335,8 @@ KisAnimTimelineFramesView::KisAnimTimelineFramesView(QWidget *parent)
 }
 
 KisAnimTimelineFramesView::~KisAnimTimelineFramesView()
-{}
+{
+}
 
 void KisAnimTimelineFramesView::setModel(QAbstractItemModel *model)
 {
@@ -975,10 +992,10 @@ void KisAnimTimelineFramesView::mousePressEvent(QMouseEvent *event)
                     model()->data(index, KisAnimTimelineFramesModel::SpecialKeyframeExists).toBool()) {
 
                 {
-                    KisSignalsBlocker b(m_d->colorSelector);
+                    KisSignalsBlocker b(m_d->colorSelector->colorLabelSelector());
                     QVariant colorLabel = index.data(KisAnimTimelineFramesModel::FrameColorLabelIndexRole);
                     int labelIndex = colorLabel.isValid() ? colorLabel.toInt() : 0;
-                    m_d->colorSelector->setCurrentIndex(labelIndex);
+                    m_d->colorSelector->colorLabelSelector()->setCurrentIndex(labelIndex);
                 }
 
                 const bool hasClones = model()->data(index, KisAnimTimelineFramesModel::CloneCount).toInt() > 0;
@@ -991,9 +1008,9 @@ void KisAnimTimelineFramesView::mousePressEvent(QMouseEvent *event)
 
             } else {
                 {
-                    KisSignalsBlocker b(m_d->colorSelector);
+                    KisSignalsBlocker b(m_d->colorSelector->colorLabelSelector());
                     const int labelIndex = KisImageConfig(true).defaultFrameColorLabel();
-                    m_d->colorSelector->setCurrentIndex(labelIndex);
+                    m_d->colorSelector->colorLabelSelector()->setCurrentIndex(labelIndex);
                 }
 
                 QMenu menu;
@@ -1032,8 +1049,8 @@ void KisAnimTimelineFramesView::mousePressEvent(QMouseEvent *event)
             }
 
             if (hasKeyframes) {
-                KisSignalsBlocker b(m_d->multiframeColorSelector);
-                m_d->multiframeColorSelector->setCurrentIndex(labelIndex);
+                KisSignalsBlocker b(m_d->multiframeColorSelector->colorLabelSelector());
+                m_d->multiframeColorSelector->colorLabelSelector()->setCurrentIndex(labelIndex);
             }
 
             QMenu menu;

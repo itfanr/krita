@@ -168,6 +168,12 @@ void KisUpdateScheduler::fullRefreshAsync(KisNodeSP root, const QVector<QRect>& 
     processQueues();
 }
 
+void KisUpdateScheduler::fullRefreshAsyncNoFilthy(KisNodeSP root, const QVector<QRect> &rects, const QRect &cropRect)
+{
+    m_d->updatesQueue.addFullRefreshNoFilthyJob(root, rects, cropRect, currentLevelOfDetail());
+    processQueues();
+}
+
 void KisUpdateScheduler::fullRefresh(KisNodeSP root, const QRect& rc, const QRect &cropRect)
 {
     KisBaseRectsWalkerSP walker = new KisFullRefreshWalker(cropRect);
@@ -187,9 +193,10 @@ void KisUpdateScheduler::fullRefresh(KisNodeSP root, const QRect& rc, const QRec
 
     Q_ASSERT(m_d->updaterContext.isJobAllowed(walker));
     m_d->updaterContext.addMergeJob(walker);
+    m_d->updaterContext.unlock();
+
     m_d->updaterContext.waitForDone();
 
-    m_d->updaterContext.unlock();
     if(needLock) unlock(true);
 }
 

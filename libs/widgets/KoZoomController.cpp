@@ -29,8 +29,8 @@ void KoZoomController::Private::init(KoCanvasController *co,
     zoomHandler = zh;
     connect(action, SIGNAL(zoomChanged(KoZoomMode::Mode,qreal)),
             parent, SLOT(setZoom(KoZoomMode::Mode,qreal)));
-    connect(action, SIGNAL(aspectModeChanged(bool)),
-            parent, SIGNAL(aspectModeChanged(bool)));
+    connect(action, SIGNAL(canvasMappingModeChanged(bool)),
+            parent, SIGNAL(canvasMappingModeChanged(bool)));
     connect(action, SIGNAL(zoomedToSelection()),
             parent, SIGNAL(zoomedToSelection()));
     connect(action, SIGNAL(zoomedToAll()),
@@ -135,27 +135,28 @@ void KoZoomController::setZoom(KoZoomMode::Mode mode, qreal zoom, qreal resoluti
         d->zoomHandler->setResolution(resolutionX, resolutionY);
     }
 
+    int cfgMargin = d->zoomHandler->zoomMarginSize();
     if(mode == KoZoomMode::ZOOM_CONSTANT) {
         if(zoom == 0.0) return;
         d->action->setZoom(zoom);
     }
     else if(mode == KoZoomMode::ZOOM_WIDTH) {
-        zoom = (d->canvasController->viewportSize().width() - 2 * d->fitMargin)
+        zoom = (d->canvasController->viewportSize().width() - cfgMargin - 2 * d->fitMargin)
                 / (oldPageViewportSize.width() / d->zoomHandler->zoom());
         d->action->setSelectedZoomMode(mode);
         d->action->setEffectiveZoom(zoom);
     }
     else if(mode == KoZoomMode::ZOOM_PAGE) {
-        zoom = (d->canvasController->viewportSize().width() - 2 * d->fitMargin)
+        zoom = (d->canvasController->viewportSize().width() - cfgMargin - 2 * d->fitMargin)
                 / (oldPageViewportSize.width() / d->zoomHandler->zoom());
-        zoom = qMin(zoom, (d->canvasController->viewportSize().height() - 2 * d->fitMargin)
+        zoom = qMin(zoom, (d->canvasController->viewportSize().height() - cfgMargin - 2 * d->fitMargin)
                     / (oldPageViewportSize.height() / d->zoomHandler->zoom()));
 
         d->action->setSelectedZoomMode(mode);
         d->action->setEffectiveZoom(zoom);
     }
     else if(mode == KoZoomMode::ZOOM_HEIGHT) {
-        zoom = (d->canvasController->viewportSize().height() - 2 * d->fitMargin)
+        zoom = (d->canvasController->viewportSize().height() - cfgMargin - 2 * d->fitMargin)
                 / (oldPageViewportSize.height() / d->zoomHandler->zoom());
 
         d->action->setSelectedZoomMode(mode);
@@ -209,11 +210,17 @@ QSize KoZoomController::documentToViewportCeil(const QSizeF &size)
     return QSize(qCeil(viewport.width()), qCeil(viewport.height()));
 }
 
-void KoZoomController::setAspectMode(bool status)
+void KoZoomController::setCanvasMappingMode(bool status)
 {
     if (d->action) {
-        d->action->setAspectMode(status);
+        d->action->setCanvasMappingMode(status);
     }
 }
+
+void KoZoomController::setZoomMarginSize(int size)
+{
+    d->zoomHandler->setZoomMarginSize(size);
+}
+
 //have to include this because of Q_PRIVATE_SLOT
 #include <moc_KoZoomController.cpp>

@@ -39,10 +39,10 @@ Imported Targets
 ``WebP::webpdemux``
   The WebP demux library, if found.
 
-``WebP::webpmux``
+``WebP::libwebpmux``
   The WebP mux library, if found.
 
-``WebP::webpdecoder``
+``WebP::decoder``
   The WebP decoder library, if found.
 
 Result Variables
@@ -88,7 +88,7 @@ endif()
 find_package(PkgConfig QUIET)
 pkg_check_modules(PC_WEBP QUIET libwebp)
 set(WebP_COMPILE_OPTIONS ${PC_WEBP_CFLAGS_OTHER})
-set(WebP_VERSION ${PC_WEBP_CFLAGS_VERSION})
+set(WebP_VERSION ${PC_WEBP_VERSION})
 
 find_path(WebP_INCLUDE_DIR
     NAMES webp/decode.h
@@ -103,12 +103,8 @@ find_library(WebP_LIBRARY
 # There's nothing in the WebP headers that could be used to detect the exact
 # WebP version being used so don't attempt to do so. A version can only be found
 # through pkg-config
-if ("${WebP_FIND_VERSION}" VERSION_GREATER "${WebP_VERSION}")
-    if (WebP_VERSION)
-        message(FATAL_ERROR "Required version (" ${WebP_FIND_VERSION} ") is higher than found version (" ${WebP_VERSION} ")")
-    else ()
-        message(WARNING "Cannot determine WebP version without pkg-config")
-    endif ()
+if (NOT WebP_VERSION)
+    message(WARNING "Cannot determine WebP version without pkg-config")
 endif ()
 
 # Find components
@@ -120,37 +116,70 @@ else ()
     set(WebP_LIBS_NOT_FOUND "WebP (required)")
 endif ()
 
-find_library(WebP_DEMUX_LIBRARY
-    NAMES ${WebP_DEMUX_NAMES} webpdemux
-    HINTS ${PC_WEBP_LIBDIR} ${PC_WEBP_LIBRARY_DIRS}
-)
+if ("demux" IN_LIST WebP_FIND_COMPONENTS)
+    find_library(WebP_DEMUX_LIBRARY
+        NAMES ${WebP_DEMUX_NAMES} webpdemux
+        HINTS ${PC_WEBP_LIBDIR} ${PC_WEBP_LIBRARY_DIRS}
+    )
 
-if (WebP_DEMUX_LIBRARY)
-    list(APPEND WebP_LIBS_FOUND "webpdemux: ${WebP_DEMUX_LIBRARY}")
-else ()
-    list(APPEND WebP_LIBS_NOT_FOUND "webpdemux")
+    if (WebP_DEMUX_LIBRARY)
+        if (WebP_FIND_REQUIRED_demux)
+            list(APPEND WebP_LIBS_FOUND "demux (required): ${WebP_DEMUX_LIBRARY}")
+        else ()
+           list(APPEND WebP_LIBS_FOUND "demux (optional): ${WebP_DEMUX_LIBRARY}")
+        endif ()
+    else ()
+        if (WebP_FIND_REQUIRED_demux)
+           set(_WebP_REQUIRED_LIBS_FOUND OFF)
+           list(APPEND WebP_LIBS_NOT_FOUND "demux (required)")
+        else ()
+           list(APPEND WebP_LIBS_NOT_FOUND "demux (optional)")
+        endif ()
+    endif ()
 endif ()
 
-find_library(WebP_MUX_LIBRARY
-    NAMES ${WebP_MUX_NAMES} webpmux
-    HINTS ${PC_WEBP_LIBDIR} ${PC_WEBP_LIBRARY_DIRS}
-)
+if ("mux" IN_LIST WebP_FIND_COMPONENTS)
+    find_library(WebP_MUX_LIBRARY
+        NAMES ${WebP_MUX_NAMES} webpmux
+        HINTS ${PC_WEBP_LIBDIR} ${PC_WEBP_LIBRARY_DIRS}
+    )
 
-if (WebP_MUX_LIBRARY)
-    list(APPEND WebP_LIBS_FOUND "webpmux: ${WebP_MUX_LIBRARY}")
-else ()
-    list(APPEND WebP_LIBS_NOT_FOUND "webpmux")
+    if (WebP_MUX_LIBRARY)
+        if (WebP_FIND_REQUIRED_mux)
+            list(APPEND WebP_LIBS_FOUND "mux (required): ${WebP_MUX_LIBRARY}")
+        else ()
+           list(APPEND WebP_LIBS_FOUND "mux (optional): ${WebP_MUX_LIBRARY}")
+        endif ()
+    else ()
+        if (WebP_FIND_REQUIRED_mux)
+           set(_WebP_REQUIRED_LIBS_FOUND OFF)
+           list(APPEND WebP_LIBS_NOT_FOUND "mux (required)")
+        else ()
+           list(APPEND WebP_LIBS_NOT_FOUND "mux (optional)")
+        endif ()
+    endif ()
 endif ()
 
-find_library(WebP_DECODER_LIBRARY
-    NAMES ${WebP_DECODER_NAMES} webpdecoder
-    HINTS ${PC_WEBP_LIBDIR} ${PC_WEBP_LIBRARY_DIRS}
-)
+if ("decoder" IN_LIST WebP_FIND_COMPONENTS)
+    find_library(WebP_DECODER_LIBRARY
+        NAMES ${WebP_DECODER_NAMES} webpdecoder
+        HINTS ${PC_WEBP_LIBDIR} ${PC_WEBP_LIBRARY_DIRS}
+    )
 
-if (WebP_DECODER_LIBRARY)
-    list(APPEND WebP_LIBS_FOUND "webpdecoder: ${WebP_DECODER_LIBRARY}")
-else ()
-    list(APPEND WebP_LIBS_NOT_FOUND "webpdecoder")
+    if (WebP_DECODER_LIBRARY)
+        if (WebP_FIND_REQUIRED_decoder)
+            list(APPEND WebP_LIBS_FOUND "decoder (required): ${WebP_DECODER_LIBRARY}")
+        else ()
+           list(APPEND WebP_LIBS_FOUND "decoder (optional): ${WebP_DECODER_LIBRARY}")
+        endif ()
+    else ()
+        if (WebP_FIND_REQUIRED_decoder)
+           set(_WebP_REQUIRED_LIBS_FOUND OFF)
+           list(APPEND WebP_LIBS_NOT_FOUND "decoder (required)")
+        else ()
+           list(APPEND WebP_LIBS_NOT_FOUND "decoder (optional)")
+        endif ()
+    endif ()
 endif ()
 
 if (NOT WebP_FIND_QUIETLY)
@@ -174,6 +203,7 @@ find_package_handle_standard_args(WebP
     VERSION_VAR WebP_VERSION
 )
 
+if (WebP_FOUND)
 if (WebP_LIBRARY AND NOT TARGET WebP::webp)
     add_library(WebP::webp UNKNOWN IMPORTED GLOBAL)
     set_target_properties(WebP::webp PROPERTIES
@@ -192,9 +222,9 @@ if (WebP_DEMUX_LIBRARY AND NOT TARGET WebP::webpdemux)
     )
 endif ()
 
-if (WebP_MUX_LIBRARY AND NOT TARGET WebP::webpmux)
-    add_library(WebP::webpmux UNKNOWN IMPORTED GLOBAL)
-    set_target_properties(WebP::webpmux PROPERTIES
+if (WebP_MUX_LIBRARY AND NOT TARGET WebP::libwebpmux)
+    add_library(WebP::libwebpmux UNKNOWN IMPORTED GLOBAL)
+    set_target_properties(WebP::libwebpmux PROPERTIES
         IMPORTED_LOCATION "${WebP_MUX_LIBRARY}"
         INTERFACE_COMPILE_OPTIONS "${WebP_COMPILE_OPTIONS}"
         INTERFACE_INCLUDE_DIRECTORIES "${WebP_INCLUDE_DIR}"
@@ -218,7 +248,7 @@ mark_as_advanced(
     WebP_DECODER_LIBRARY
 )
 
-if (WebP_FOUND)
-    set(WebP_LIBRARIES ${WebP_LIBRARY} ${WebP_DEMUX_LIBRARY} ${WebP_MUX_LIBRARY} ${WebP_DECODER_LIBRARY})
-    set(WebP_INCLUDE_DIRS ${WebP_INCLUDE_DIR})
-endif ()
+set(WebP_LIBRARIES ${WebP_LIBRARY} ${WebP_DEMUX_LIBRARY} ${WebP_MUX_LIBRARY} ${WebP_DECODER_LIBRARY})
+set(WebP_INCLUDE_DIRS ${WebP_INCLUDE_DIR})
+
+endif()

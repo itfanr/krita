@@ -98,21 +98,21 @@ protected:
     friend class KisViewManager;
     friend class KisView;
     KisSmoothingOptionsSP smoothingOptions() const;
-    bool m_assistant;
-    double m_magnetism;
-    bool m_only_one_assistant;
-    bool m_eraser_snapping;
+    bool m_assistant {false};
+    double m_magnetism {1.0};
+    bool m_only_one_assistant {true};
+    bool m_eraser_snapping {false};
 
 private:
-    KisPaintingInformationBuilder *m_infoBuilder;
-    KisToolFreehandHelper *m_helper;
+    KisPaintingInformationBuilder *m_infoBuilder {nullptr};
+    KisToolFreehandHelper *m_helper {nullptr};
 
     QPointF m_initialGestureDocPoint;
     QPointF m_lastDocumentPoint;
-    qreal m_lastPaintOpSize;
+    qreal m_lastPaintOpSize {0.0};
     QPoint m_initialGestureGlobalPoint;
 
-    bool m_paintopBasedSamplingInAction;
+    bool m_paintopBasedSamplingInAction {false};
     KisSignalCompressorWithParam<qreal> m_brushResizeCompressor;
 };
 

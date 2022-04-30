@@ -79,12 +79,7 @@ KisResourceLocator::LocatorError KisResourceLocator::initialize(const QString &i
 {
     InitializationStatus initializationStatus = InitializationStatus::Unknown;
 
-    KConfigGroup cfg(KSharedConfig::openConfig(), "");
-    d->resourceLocation = cfg.readEntry(resourceLocationKey, "");
-    if (d->resourceLocation.isEmpty()) {
-        d->resourceLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    }
-    if (!d->resourceLocation.endsWith('/')) d->resourceLocation += '/';
+    d->resourceLocation = resourceLocationBaseFromConfig();
 
     QFileInfo fi(d->resourceLocation);
 
@@ -209,6 +204,17 @@ KisTagSP KisResourceLocator::tagForUrl(const QString &tagUrl, const QString reso
         return d->tagCache[QPair<QString, QString>(resourceType, tagUrl)];
     }
 
+    KisTagSP tag = tagForUrlNoCache(tagUrl, resourceType);
+
+    if (tag && tag->valid()) {
+        d->tagCache[QPair<QString, QString>(resourceType, tagUrl)] = tag;
+    }
+
+    return tag;
+}
+
+KisTagSP KisResourceLocator::tagForUrlNoCache(const QString &tagUrl, const QString resourceType)
+{
     QSqlQuery query;
     bool r = query.prepare("SELECT tags.id\n"
                            ",      tags.url\n"
@@ -311,8 +317,6 @@ KisTagSP KisResourceLocator::tagForUrl(const QString &tagUrl, const QString reso
     }
 
     tag->setDefaultResources(resourceFileNames);
-
-    d->tagCache[QPair<QString, QString>(resourceType, tagUrl)] = tag;
 
     return tag;
 }
@@ -537,12 +541,12 @@ KoResourceSP KisResourceLocator::importResource(const QString &resourceType, con
                 return nullptr;
             }
 
-            Q_EMIT beginExternalResourceOverride(resourceType, existingResourceId);
+            Q_EMIT beginExternalResourceRemove(resourceType, {existingResourceId});
 
             // remove everything related to this resource from the database (remember about tags and versions!!!)
             r = KisResourceCacheDb::removeResourceCompletely(existingResourceId);
 
-            Q_EMIT endExternalResourceOverride(resourceType, existingResourceId);
+            Q_EMIT endExternalResourceRemove(resourceType);
 
             if (!r) {
                 qWarning() << "KisResourceLocator::importResourceFromFile: Removing resource with id " << existingResourceId << "completely from the database failed.";
@@ -572,7 +576,7 @@ KoResourceSP KisResourceLocator::importResource(const QString &resourceType, con
         resource->setDirty(false);
         resource->updateLinkedResourcesMetaData(KisGlobalResourcesInterface::instance());
 
-        Q_EMIT beginExternalResourceImport(resourceType);
+        Q_EMIT beginExternalResourceImport(resourceType, 1);
 
         // Insert into the database
         const bool result = KisResourceCacheDb::addResource(storage,
@@ -788,6 +792,25 @@ bool KisResourceLocator::addStorage(const QString &storageLocation, KisResourceS
         }
     }
 
+    QVector<std::pair<QString, int>> addedResources;
+    Q_FOREACH(const QString &type, KisResourceLoaderRegistry::instance()->resourceTypes()) {
+        int numAddedResources = 0;
+
+        QSharedPointer<KisResourceStorage::ResourceIterator> it = storage->resources(type);
+        while (it->hasNext()) {
+            it->next();
+            numAddedResources++;
+        }
+
+        if (numAddedResources > 0) {
+            addedResources << std::make_pair(type, numAddedResources);
+        }
+    }
+
+    Q_FOREACH (const auto &typedResources, addedResources) {
+        Q_EMIT beginExternalResourceImport(typedResources.first, typedResources.second);
+    }
+
     d->storages[storageLocation] = storage;
     if (!KisResourceCacheDb::addStorage(storage, false)) {
         d->errorMessages.append(i18n("Could not add %1 to the database", storage->location()));
@@ -801,7 +824,11 @@ bool KisResourceLocator::addStorage(const QString &storageLocation, KisResourceS
         return false;
     }
 
-    emit storageAdded(makeStorageLocationRelative(storage->location()));
+    Q_FOREACH (const auto &typedResources, addedResources) {
+        Q_EMIT endExternalResourceImport(typedResources.first);
+    }
+
+    Q_EMIT storageAdded(makeStorageLocationRelative(storage->location()));
     return true;
 }
 
@@ -810,6 +837,19 @@ bool KisResourceLocator::removeStorage(const QString &storageLocation)
     // Cloned documents have a document storage, but that isn't in the locator.
     if (!d->storages.contains(storageLocation)) {
         return true;
+    }
+
+    QVector<std::pair<QString, QVector<int>>> removedResources;
+
+    Q_FOREACH(const QString &type, KisResourceLoaderRegistry::instance()->resourceTypes()) {
+        const QVector<int> resources = KisResourceCacheDb::resourcesForStorage(type, storageLocation);
+        if (!resources.isEmpty()) {
+            removedResources << std::make_pair(type, resources);
+        }
+    }
+
+    Q_FOREACH (const auto &typedResources, removedResources) {
+        Q_EMIT beginExternalResourceRemove(typedResources.first, typedResources.second);
     }
 
     purge(storageLocation);
@@ -821,7 +861,12 @@ bool KisResourceLocator::removeStorage(const QString &storageLocation)
         qWarning() << d->errorMessages;
         return false;
     }
-    emit storageRemoved(storage->location());
+
+    Q_FOREACH (const auto &typedResources, removedResources) {
+        Q_EMIT endExternalResourceRemove(typedResources.first);
+    }
+
+    Q_EMIT storageRemoved(makeStorageLocationRelative(storage->location()));
 
     return true;
 }
@@ -850,19 +895,29 @@ void KisResourceLocator::saveTags()
         return;
     }
 
+    QString resourceLocation = resourceLocationBaseFromConfig();
+
     while (query.next()) {
         // Save tag...
-        KisTagSP tag = tagForUrl(query.value("tags.url").toString(),
+        KisTagSP tag = tagForUrlNoCache(query.value("tags.url").toString(),
                                  query.value("resource_types.name").toString());
 
         QString filename = tag->filename();
-        if (filename.isEmpty()) {
+        if (filename.isEmpty() || QFileInfo(filename).suffix().isEmpty()) {
             filename = tag->url() + ".tag";
         }
 
-        filename = makeStorageLocationRelative(filename);
 
-        QFile f(d->resourceLocation + tag->resourceType() + '/' + filename);
+        if (QFileInfo(filename).suffix() != "tag" && QFileInfo(filename).suffix() != "TAG") {
+            // it's either .abr file, or maybe a .bundle
+            // or something else, but not a tag file
+            dbgResources << "Skipping saving tag " << tag->name(false) << filename << tag->resourceType();
+            continue;
+        }
+
+        filename.remove(resourceLocation);
+
+        QFile f(resourceLocation + "/" + tag->resourceType() + '/' + filename);
 
         if (!f.open(QFile::WriteOnly)) {
             qWarning () << "Couild not open tag file for writing" << f.fileName();
@@ -1146,4 +1201,15 @@ QString KisResourceLocator::makeStorageLocationRelative(QString location) const
 {
 //    debugResource << "makeStorageLocationRelative" << location << "locationbase" << resourceLocationBase();
     return location.remove(resourceLocationBase());
+}
+
+QString KisResourceLocator::resourceLocationBaseFromConfig()
+{
+    KConfigGroup cfg(KSharedConfig::openConfig(), "");
+    QString resourceLocation = cfg.readEntry(resourceLocationKey, "");
+    if (resourceLocation.isEmpty()) {
+        resourceLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    }
+    if (!resourceLocation.endsWith('/')) resourceLocation += '/';
+    return resourceLocation;
 }

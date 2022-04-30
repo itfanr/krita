@@ -19,7 +19,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
-#include <QKeyEvent>
 #include <QEvent>
 #include <QVariant>
 #include <QAction>
@@ -68,17 +67,10 @@
 
 KisToolPaint::KisToolPaint(KoCanvasBase *canvas, const QCursor &cursor)
     : KisTool(canvas, cursor),
-      m_showColorPreview(false),
-      m_colorPreviewShowComparePlate(false),
       m_colorSamplerDelayTimer(),
-      m_isOutlineEnabled(true)
+      m_isOutlineEnabled(true),
+      m_isOutlineVisible(true)
 {
-    m_specialHoverModifier = false;
-    m_optionsWidgetLayout = 0;
-
-    m_opacity = OPACITY_OPAQUE_U8;
-
-    m_supportOutline = false;
 
     {
         const int maxSize = KisImageConfig(true).maxBrushSize();
@@ -124,6 +116,9 @@ void KisToolPaint::canvasResourceChanged(int key, const QVariant& v)
     switch(key) {
     case(KoCanvasResource::Opacity):
         setOpacity(v.toDouble());
+        break;
+    case(KoCanvasResource::CurrentPaintOpPreset):
+        requestUpdateOutline(m_outlineDocPoint, 0);
         break;
     default: //nothing
         break;
@@ -614,13 +609,13 @@ void KisToolPaint::slotPopupQuickHelp()
 void KisToolPaint::activatePrimaryAction()
 {
     sampleColorWasOverridden();
-    setOutlineEnabled(true);
+    setOutlineVisible(true);
     KisTool::activatePrimaryAction();
 }
 
 void KisToolPaint::deactivatePrimaryAction()
 {
-    setOutlineEnabled(false);
+    setOutlineVisible(false);
     KisTool::deactivatePrimaryAction();
 }
 
@@ -629,9 +624,20 @@ bool KisToolPaint::isOutlineEnabled() const
     return m_isOutlineEnabled;
 }
 
-void KisToolPaint::setOutlineEnabled(bool value)
+void KisToolPaint::setOutlineEnabled(bool enabled)
 {
-    m_isOutlineEnabled = value;
+    m_isOutlineEnabled = enabled;
+    requestUpdateOutline(m_outlineDocPoint, lastDeliveredPointerEvent());
+}
+
+bool KisToolPaint::isOutlineVisible() const
+{
+    return m_isOutlineVisible;
+}
+
+void KisToolPaint::setOutlineVisible(bool visible)
+{
+    m_isOutlineVisible = visible;
     requestUpdateOutline(m_outlineDocPoint, lastDeliveredPointerEvent());
 }
 
@@ -669,8 +675,8 @@ void KisToolPaint::decreaseBrushSize()
 void KisToolPaint::showBrushSize()
 {
      KisCanvas2 *kisCanvas =dynamic_cast<KisCanvas2*>(canvas());
-     kisCanvas->viewManager()->showFloatingMessage(i18n("%1 %2 px", QString("Brush Size:"), currentPaintOpPreset()->settings()->paintOpSize())
-                                                                   , QIcon(), 1000, KisFloatingMessage::High,  Qt::AlignLeft | Qt::TextWordWrap | Qt::AlignVCenter);
+     kisCanvas->viewManager()->showFloatingMessage(i18n("Brush Size: %1 px", currentPaintOpPreset()->settings()->paintOpSize())
+                                                   , QIcon(), 1000, KisFloatingMessage::High,  Qt::AlignLeft | Qt::TextWordWrap | Qt::AlignVCenter);
 }
 
 std::pair<QRectF,QRectF> KisToolPaint::colorPreviewDocRect(const QPointF &outlineDocPoint)
@@ -707,7 +713,7 @@ void KisToolPaint::requestUpdateOutline(const QPointF &outlineDocPoint, const Ko
         KisConfig cfg(true);
         KisPaintOpSettings::OutlineMode outlineMode;
 
-        if (isOutlineEnabled() &&
+        if (isOutlineEnabled() && isOutlineVisible() &&
                 (mode() == KisTool::GESTURE_MODE ||
                  ((cfg.newOutlineStyle() == OUTLINE_FULL ||
                    cfg.newOutlineStyle() == OUTLINE_CIRCLE ||
@@ -764,27 +770,26 @@ void KisToolPaint::requestUpdateOutline(const QPointF &outlineDocPoint, const Ko
 
     // WARNING: assistants code is also duplicated in KisDelegatedSelectPathWrapper::mouseMoveEvent
 
-    KisCanvas2 * kiscanvas = dynamic_cast<KisCanvas2*>(canvas());
+    KisCanvas2 *kiscanvas = qobject_cast<KisCanvas2*>(canvas());
     KisPaintingAssistantsDecorationSP decoration = kiscanvas->paintingAssistantsDecoration();
     if (decoration && decoration->visible() && decoration->hasPaintableAssistants()) {
-        kiscanvas->updateCanvas();
-    } else {
-        // TODO: only this branch should be present!
-        if (!m_oldColorPreviewUpdateRect.isEmpty()) {
-            canvas()->updateCanvas(m_oldColorPreviewUpdateRect);
-        }
+        kiscanvas->updateCanvasDecorations();
+    }
 
-        if (!m_oldOutlineRect.isEmpty()) {
-            canvas()->updateCanvas(m_oldOutlineRect);
-        }
+    if (!m_oldColorPreviewUpdateRect.isEmpty()) {
+        kiscanvas->updateCanvasToolOutlineDoc(m_oldColorPreviewUpdateRect);
+    }
 
-        if (!outlineDocRect.isEmpty()) {
-            canvas()->updateCanvas(outlineDocRect);
-        }
+    if (!m_oldOutlineRect.isEmpty()) {
+        kiscanvas->updateCanvasToolOutlineDoc(m_oldOutlineRect);
+    }
 
-        if (!colorPreviewDocUpdateRect.isEmpty()) {
-            canvas()->updateCanvas(colorPreviewDocUpdateRect);
-        }
+    if (!outlineDocRect.isEmpty()) {
+        kiscanvas->updateCanvasToolOutlineDoc(outlineDocRect);
+    }
+
+    if (!colorPreviewDocUpdateRect.isEmpty()) {
+        kiscanvas->updateCanvasToolOutlineDoc(colorPreviewDocUpdateRect);
     }
 
     m_oldOutlineRect = outlineDocRect;
@@ -811,7 +816,7 @@ QPainterPath KisToolPaint::getOutlinePath(const QPointF &documentPos,
 
     QPainterPath path = currentPaintOpPreset()->settings()->
         brushOutline(info,
-                     outlineMode, converter->effectiveZoom());
+                     outlineMode, converter->effectivePhysicalZoom());
 
     return path;
 }

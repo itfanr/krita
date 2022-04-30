@@ -15,9 +15,11 @@
 #include <kis_debug.h>
 #include <kis_effect_mask.h>
 #include <kis_group_layer.h>
+#include <kis_generator_layer.h>
 #include <kis_image.h>
 #include <kis_node.h>
 #include <kis_paint_layer.h>
+#include <kis_painter.h>
 
 #include "kis_dom_utils.h"
 
@@ -71,8 +73,14 @@ bool PSDLayerMaskSection::read(QIODevice &io)
 template<psd_byte_order byteOrder>
 bool PSDLayerMaskSection::readLayerInfoImpl(QIODevice &io)
 {
-    quint32 layerInfoSectionSize = 0;
-    SAFE_READ_EX(byteOrder, io, layerInfoSectionSize);
+    quint64 layerInfoSectionSize = 0;
+    if (m_header.version == 1) {
+        quint32 _layerInfoSectionSize = 0;
+        SAFE_READ_EX(byteOrder, io, _layerInfoSectionSize);
+        layerInfoSectionSize = _layerInfoSectionSize;
+    } else if (m_header.version == 2) {
+        SAFE_READ_EX(byteOrder, io, layerInfoSectionSize);
+    }
 
     if (layerInfoSectionSize & 0x1) {
         warnKrita << "WARNING: layerInfoSectionSize is NOT even! Fixing...";
@@ -255,6 +263,14 @@ bool PSDLayerMaskSection::readPsdImpl(QIODevice &io)
             error = "Could not read global mask info visualization type";
             return false;
         }
+
+        // Global mask must measure at least 13 bytes
+        // (excluding the 1 byte compiler enforced padding)
+        if (globalMaskBlockLength >= 13) {
+            dbgFile << "Padding for global mask block:"
+                    << globalMaskBlockLength - 13 << "(" << io.pos() << ")";
+            io.skip(static_cast<size_t>(globalMaskBlockLength) - 13);
+        }
     }
 
     // global additional sections
@@ -269,6 +285,8 @@ bool PSDLayerMaskSection::readPsdImpl(QIODevice &io)
      */
     globalInfoSection.setExtraLayerInfoBlockHandler(
         std::bind(&PSDLayerMaskSection::readLayerInfoImpl<psd_byte_order::psdBigEndian>, this, std::placeholders::_1));
+
+    dbgFile << "Position before starting global info section:" << io.pos();
 
     globalInfoSection.read(io);
 
@@ -320,6 +338,10 @@ bool PSDLayerMaskSection::readGlobalMask(QIODevice &io)
                 << globalLayerMaskInfo.colorComponents[3]; // 0
         dbgFile << "\tOpacity:" << globalLayerMaskInfo.opacity; // 50
         dbgFile << "\tKind:" << globalLayerMaskInfo.kind; // 128
+
+        if (globalMaskBlockLength >= 15) {
+            io.skip(qMax(globalMaskBlockLength - 15, 0x0U));
+        }
     }
 
     return true;
@@ -544,18 +566,63 @@ void PSDLayerMaskSection::writePsdImpl(QIODevice &io, KisNodeSP rootLayer, psd_c
                 layers.append(layerRecord);
 
                 KisNodeSP onlyTransparencyMask = findOnlyTransparencyMask(node, item.type);
-                const QRect maskRect = onlyTransparencyMask ? onlyTransparencyMask->paintDevice()->exactBounds() : QRect();
+                QRect maskRect = onlyTransparencyMask ? onlyTransparencyMask->paintDevice()->exactBounds() : QRect();
 
                 const bool nodeVisible = node->visible();
                 const KoColorSpace *colorSpace = node->colorSpace();
                 const quint8 nodeOpacity = node->opacity();
                 const quint8 nodeClipping = 0;
+                const int nodeLabelColor = node->colorLabelIndex();
                 const KisPaintLayer *paintLayer = qobject_cast<KisPaintLayer *>(node.data());
                 const bool alphaLocked = (paintLayer && paintLayer->alphaLocked());
                 const QString nodeCompositeOp = node->compositeOpId();
 
                 const KisGroupLayer *groupLayer = qobject_cast<KisGroupLayer *>(node.data());
                 const bool nodeIsPassThrough = groupLayer && groupLayer->passThroughMode();
+
+                const KisGeneratorLayer *fillLayer = qobject_cast<KisGeneratorLayer *>(node.data());
+                QDomDocument fillConfig;
+                psd_fill_type fillType = psd_fill_solid_color;
+                if (fillLayer) {
+                    QString generatorName = fillLayer->filter()->name();
+                    if (generatorName == "color") {
+                        psd_layer_solid_color fill;
+                        if (fill.loadFromConfig(fillLayer->filter())) {
+                            if (node->image()) {
+                                fill.cs = node->image()->colorSpace();
+                            } else {
+                                fill.cs = node->colorSpace();
+                            }
+                            fillConfig = fill.getASLXML();
+                            fillType = psd_fill_solid_color;
+                        }
+                    } else if (generatorName == "gradient") {
+                        psd_layer_gradient_fill fill;
+                        fill.imageWidth = node->image()->width();
+                        fill.imageHeight = node->image()->height();
+                        if (fill.loadFromConfig(fillLayer->filter())) {
+                            fillConfig = fill.getASLXML();
+                            fillType = psd_fill_gradient;
+                        }
+                    } else if (generatorName == "pattern") {
+
+                        psd_layer_pattern_fill fill;
+                        if (fill.loadFromConfig(fillLayer->filter())) {
+                            if (fill.pattern) {
+                                KisAslXmlWriter w;
+                                w.enterList(ResourceType::Patterns);
+                                QString uuid = w.writePattern("", fill.pattern);
+                                w.leaveList();
+                                mergedPatternsXmlDoc = w.document();
+                                fill.patternID = uuid;
+                                fillConfig = fill.getASLXML();
+                                fillType = psd_fill_pattern;
+                            }
+                        }
+
+                    }
+                    // And if anything else, it cannot be stored as a PSD fill layer.
+                }
 
                 QDomDocument stylesXmlDoc = fetchLayerStyleXmlData(node);
 
@@ -573,7 +640,15 @@ void PSDLayerMaskSection::writePsdImpl(QIODevice &io, KisNodeSP rootLayer, psd_c
                 if (item.type == FlattenedNode::RASTER_LAYER) {
                     nodeIrrelevant = false;
                     nodeName = node->name();
-                    layerContentDevice = onlyTransparencyMask ? node->original() : node->projection();
+                    bool transparency = KisPainter::checkDeviceHasTransparency(node->paintDevice());
+                    bool semiOpacity = node->paintDevice()->defaultPixel().opacityU8() < OPACITY_OPAQUE_U8;
+                    if (fillLayer && (transparency || semiOpacity)) {
+                        layerContentDevice = node->original();
+                        onlyTransparencyMask = node;
+                        maskRect = onlyTransparencyMask->paintDevice()->exactBounds();
+                    } else {
+                        layerContentDevice = onlyTransparencyMask ? node->original() : node->projection();
+                    }
                     sectionType = psd_other;
                 } else {
                     nodeIrrelevant = true;
@@ -626,11 +701,16 @@ void PSDLayerMaskSection::writePsdImpl(QIODevice &io, KisNodeSP rootLayer, psd_c
                 layerRecord->opacity = nodeOpacity;
                 layerRecord->clipping = nodeClipping;
 
+                layerRecord->labelColor = nodeLabelColor;
+
                 layerRecord->transparencyProtected = alphaLocked;
                 layerRecord->visible = nodeVisible;
                 layerRecord->irrelevant = nodeIrrelevant;
 
                 layerRecord->layerName = nodeName.isEmpty() ? i18n("Unnamed Layer") : nodeName;
+
+                layerRecord->fillType = fillType;
+                layerRecord->fillConfig = fillConfig;
 
                 layerRecord->write(io, layerContentDevice, onlyTransparencyMask, maskRect, sectionType, stylesXmlDoc, node->inherits("KisGroupLayer"));
             }
@@ -694,6 +774,7 @@ void PSDLayerMaskSection::writeTiffImpl(QIODevice &io, KisNodeSP rootLayer, psd_
                 const KoColorSpace *colorSpace = node->colorSpace();
                 const quint8 nodeOpacity = node->opacity();
                 const quint8 nodeClipping = 0;
+                const int nodeLabelColor = node->colorLabelIndex();
                 const KisPaintLayer *paintLayer = qobject_cast<KisPaintLayer *>(node.data());
                 const bool alphaLocked = (paintLayer && paintLayer->alphaLocked());
                 const QString nodeCompositeOp = node->compositeOpId();
@@ -774,6 +855,7 @@ void PSDLayerMaskSection::writeTiffImpl(QIODevice &io, KisNodeSP rootLayer, psd_
                 layerRecord->transparencyProtected = alphaLocked;
                 layerRecord->visible = nodeVisible;
                 layerRecord->irrelevant = nodeIrrelevant;
+                layerRecord->labelColor = nodeLabelColor;
 
                 layerRecord->layerName = nodeName.isEmpty() ? i18n("Unnamed Layer") : nodeName;
 

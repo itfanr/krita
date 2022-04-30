@@ -76,18 +76,34 @@ public:
 
 private Q_SLOTS:
     void slotLoadingFinished(KisPaintDeviceSP projection, qreal xRes, qreal yRes, const QSize &size);
+    void slotLoadingFailed();
+    void slotFileExistsStateChanged(bool exists);
     void openFile() const;
 
 Q_SIGNALS:
     void sigRequestOpenFile();
 
 private:
+    enum State {
+        FileLoaded,
+        FileNotFound,
+        FileLoadingFailed
+    };
+
+    void changeState(State newState);
+
+private:
     QString m_basePath;
     QString m_filename;
-    ScalingMethod m_scalingMethod;
+    ScalingMethod m_scalingMethod {None};
 
     KisPaintDeviceSP m_paintDevice;
     KisSafeDocumentLoader m_loader;
+    QSize m_generatedForImageSize;
+    qreal m_generatedForXRes = 0.0;
+    qreal m_generatedForYRes = 0.0;
+
+    State m_state = FileNotFound;
 };
 
 #endif // KIS_FILE_LAYER_H

@@ -38,6 +38,7 @@ KisKeyframeSP KisScalarKeyframe::duplicate(KisKeyframeChannel *newChannel)
 {
     if (newChannel) {
         KisScalarKeyframeChannel *scalarChannel = dynamic_cast<KisScalarKeyframeChannel*>(newChannel);
+        KIS_ASSERT(scalarChannel);
         // When transitioning between channels, set limits to those of the new channel.
         KisScalarKeyframeSP scalarKey = toQShared(new KisScalarKeyframe(m_value, scalarChannel->limits()));
         scalarKey->setInterpolationMode(m_interpolationMode);
@@ -168,8 +169,9 @@ KisScalarKeyframeChannel::KisScalarKeyframeChannel(const KoID &id, KisDefaultBou
     , m_d(new Private)
 {
     // When keyframe is changed (value, tangents, etc), we should notify that the channel has been updated.
-    connect(this, &KisScalarKeyframeChannel::sigKeyframeChanged, [](const KisKeyframeChannel *channel, int time) {
+    connect(this, &KisScalarKeyframeChannel::sigKeyframeChanged, this, [](const KisKeyframeChannel *channel, int time) {
         const KisScalarKeyframeChannel* chan = dynamic_cast<const KisScalarKeyframeChannel*>(channel);
+        KIS_SAFE_ASSERT_RECOVER_RETURN(chan);
         chan->sigChannelUpdated(
                     chan->affectedFrames(time),
                     chan->affectedRect(time)
@@ -186,12 +188,13 @@ KisScalarKeyframeChannel::KisScalarKeyframeChannel(const KisScalarKeyframeChanne
         KisKeyframeChannel::copyKeyframe(&rhs, time, this, time);
     }
 
-    connect(this, &KisScalarKeyframeChannel::sigKeyframeChanged, [](const KisKeyframeChannel *channel, int time) {
-        const KisScalarKeyframeChannel* chan = dynamic_cast<const KisScalarKeyframeChannel*>(channel);
-        chan->sigChannelUpdated(
-                    chan->affectedFrames(time),
-                    chan->affectedRect(time)
-                    );
+    connect(this, &KisScalarKeyframeChannel::sigKeyframeChanged, this, [](const KisKeyframeChannel *channel, int time) {
+        KIS_SAFE_ASSERT_RECOVER_RETURN(channel);
+        const KisScalarKeyframeChannel* scalarChan = dynamic_cast<const KisScalarKeyframeChannel*>(channel);
+        KIS_SAFE_ASSERT_RECOVER_RETURN(scalarChan);
+        scalarChan->sigChannelUpdated(
+                    scalarChan->affectedFrames(time),
+                    scalarChan->affectedRect(time) );
     });
 }
 
@@ -254,7 +257,12 @@ qreal KisScalarKeyframeChannel::valueAt(int time) const
                     const int nextKeyTime = nextKeyframeTime(time);
                     const qreal activeKeyValue = activeKey->value();
                     const qreal nextKeyValue = keyframeAt<KisScalarKeyframe>(nextKeyTime)->value();
-                    result = activeKeyValue + (nextKeyValue - activeKeyValue) * (time - activeKeyTime) / (nextKeyTime - activeKeyTime);
+                    const int interpolationLength = (nextKeyTime - activeKeyTime);
+                    if (interpolationLength > 0) {
+                        result = activeKeyValue + (nextKeyValue - activeKeyValue) * (time - activeKeyTime) / (interpolationLength);
+                    } else {
+                        result = activeKeyValue;
+                    }
                     break;
                 }
             case KisScalarKeyframe::Bezier: {

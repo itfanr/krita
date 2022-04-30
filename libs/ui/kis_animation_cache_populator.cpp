@@ -27,6 +27,7 @@
 #include "KisViewManager.h"
 #include "kis_node_manager.h"
 #include "kis_keyframe_channel.h"
+#include "KisMainWindow.h"
 
 #include "KisAsyncAnimationCacheRenderer.h"
 #include "dialogs/KisAsyncAnimationCacheRenderDialog.h"
@@ -292,6 +293,7 @@ bool KisAnimationCachePopulator::regenerate(KisAnimationFrameCacheSP cache, int 
 void KisAnimationCachePopulator::requestRegenerationWithPriorityFrame(KisImageSP image, int frameIndex)
 {
     if (!m_d->calculateAnimationCacheInBackground) return;
+    if (!KisAnimationFrameCache::cacheForImage(image)) return;
 
     m_d->priorityFrames.append(qMakePair(image, frameIndex));
 

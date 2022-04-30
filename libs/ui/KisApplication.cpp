@@ -233,6 +233,7 @@ KisApplication::KisApplication(const QString &key, int &argc, char **argv)
 
     // store the style name
     qApp->setProperty(currentUnderlyingStyleNameProperty, style()->objectName());
+    KisSynchronizedConnectionBase::registerSynchronizedEventBarrier(std::bind(&KisApplication::processPostponedSynchronizationEvents, this));
 }
 
 #if defined(Q_OS_WIN) && defined(ENV32BIT)
@@ -264,6 +265,7 @@ BOOL isWow64()
 
 void KisApplication::initializeGlobals(const KisApplicationArguments &args)
 {
+    Q_UNUSED(args)
     // There are no globals to initialize from the arguments now. There used
     // to be the `dpi` argument, but it doesn't do anything anymore.
 }
@@ -626,7 +628,7 @@ bool KisApplication::start(const KisApplicationArguments &args)
                     return true;
                 }
                 else if (d->mainWindow) {
-                    if (fileName.endsWith(".bundle", Qt::CaseInsensitive)) {
+                    if (QFileInfo(fileName).fileName().endsWith(".bundle", Qt::CaseInsensitive)) {
                         d->mainWindow->installBundle(fileName);
                     }
                     else {
@@ -758,22 +760,8 @@ bool KisApplication::notify(QObject *receiver, QEvent *event)
         }
 
         if (!info.eventRecursionCount) {
-            while (!info.postponedSynchronizationEvents.empty()) {
-                // QApplication::notify() can throw, so use RAII for counters
-                AppRecursionGuard guard(&info);
+            processPostponedSynchronizationEvents();
 
-                /// We must pop event from the queue **before** we call
-                /// QApplication::notify(), because it can throw!
-                KisSynchronizedConnectionEvent typedEvent = info.postponedSynchronizationEvents.front();
-                info.postponedSynchronizationEvents.pop();
-
-                if (!typedEvent.destination) {
-                    qWarning() << "WARNING: the destination object of KisSynchronizedConnection has been destroyed during postponed delivery";
-                    continue;
-                }
-
-                QApplication::notify(typedEvent.destination, &typedEvent);
-            }
         }
 
         return result;
@@ -788,6 +776,27 @@ bool KisApplication::notify(QObject *receiver, QEvent *event)
     return false;
 }
 
+void KisApplication::processPostponedSynchronizationEvents()
+{
+    AppRecursionInfo &info = s_recursionInfo->localData();
+
+    while (!info.postponedSynchronizationEvents.empty()) {
+        // QApplication::notify() can throw, so use RAII for counters
+        AppRecursionGuard guard(&info);
+
+        /// We must pop event from the queue **before** we call
+        /// QApplication::notify(), because it can throw!
+        KisSynchronizedConnectionEvent typedEvent = info.postponedSynchronizationEvents.front();
+        info.postponedSynchronizationEvents.pop();
+
+        if (!typedEvent.destination) {
+            qWarning() << "WARNING: the destination object of KisSynchronizedConnection has been destroyed during postponed delivery";
+            continue;
+        }
+
+        QApplication::notify(typedEvent.destination, &typedEvent);
+    }
+}
 
 void KisApplication::executeRemoteArguments(QByteArray message, KisMainWindow *mainWindow)
 {
@@ -884,11 +893,7 @@ void KisApplication::checkAutosaveFiles()
 {
     if (d->batchRun) return;
 
-#ifdef Q_OS_WIN
-    QDir dir = QDir::temp();
-#else
-    QDir dir = QDir::home();
-#endif
+    QDir dir = KisAutoSaveRecoveryDialog::autoSaveLocation();
 
     // Check for autosave files from a previous run. There can be several, and
     // we want to offer a restore for every one. Including a nice thumbnail!

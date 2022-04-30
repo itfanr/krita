@@ -102,7 +102,7 @@ qint32 KisImageManager::importImage(const QUrl &urlArg, const QString &layerType
     qint32 rc = 0;
 
     if (urlArg.isEmpty()) {
-        KoFileDialog dialog(m_view->mainWindow(), KoFileDialog::OpenFiles, "OpenDocument");
+        KoFileDialog dialog(m_view->mainWindowAsQWidget(), KoFileDialog::OpenFiles, "OpenDocument");
         dialog.setCaption(i18n("Import Image"));
         dialog.setDefaultDir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation));
         dialog.setMimeTypeFilters(KisImportExportManager::supportedMimeTypes(KisImportExportManager::Import));
@@ -164,7 +164,7 @@ void KisImageManager::slotImageProperties()
     KisImageWSP image = m_view->image();
     if (!image) return;
 
-    QPointer<KisDlgImageProperties> dlg = new KisDlgImageProperties(image, m_view->mainWindow());
+    QPointer<KisDlgImageProperties> dlg = new KisDlgImageProperties(image, m_view->mainWindowAsQWidget());
     if (dlg->exec() == QDialog::Accepted) {
         if (dlg->convertLayerPixels()) {
             image->convertImageColorSpace(dlg->colorSpace(),
@@ -195,8 +195,8 @@ void KisImageManager::slotImageColor()
     QColorDialog dlg;
     dlg.setOption(QColorDialog::ShowAlphaChannel, true);
     dlg.setWindowTitle(i18n("Select a Color"));
-    KoColor bg = image->defaultProjectionColor();
-    dlg.setCurrentColor(bg.toQColor());
+    KoColor oldBgColor = image->defaultProjectionColor();
+    dlg.setCurrentColor(oldBgColor.toQColor());
 
     KisSignalCompressor compressor(200, KisSignalCompressor::FIRST_INACTIVE);
 
@@ -206,7 +206,14 @@ void KisImageManager::slotImageColor()
     connect(&dlg, SIGNAL(currentColorChanged(QColor)), &compressor, SLOT(start()));
     connect(&compressor, SIGNAL(timeout()), &proxy, SLOT(start()));
 
-    dlg.exec();
+    if (dlg.exec() == QDialog::Accepted) {
+        if (compressor.isActive()) {
+            compressor.stop();
+            updateCall();
+        }
+    } else {
+        KisLayerUtils::changeImageDefaultProjectionColor(image, oldBgColor);
+    }
 }
 
 

@@ -34,6 +34,10 @@
 #include "kis_command_utils.h"
 #include "kis_processing_applicator.h"
 #include "krita_utils.h"
+#include <KisFakeRunnableStrokeJobsExecutor.h>
+#include <KisRunnableStrokeJobData.h>
+#include <KisRunnableStrokeJobUtils.h>
+#include <kis_pointer_utils.h>
 
 
 using namespace KisLazyFillTools;
@@ -736,11 +740,22 @@ private:
     KisColorizeMaskSP m_node;
 };
 
-void KisColorizeMask::mergeToLayer(KisNodeSP layer, KisPostExecutionUndoAdapter *undoAdapter, const KUndo2MagicString &transactionText,int timedID)
+void KisColorizeMask::mergeToLayerThreaded(KisNodeSP layer, KisPostExecutionUndoAdapter *undoAdapter, const KUndo2MagicString &transactionText,int timedID, QVector<KisRunnableStrokeJobData*> *jobs)
+{
+    // Just fake threaded merging. It is not supported for the colorize mask.
+
+    KritaUtils::addJobSequential(*jobs,
+        [=] () {
+            this->mergeToLayerUnthreaded(layer, undoAdapter, transactionText, timedID);
+        }
+    );
+}
+
+void KisColorizeMask::mergeToLayerUnthreaded(KisNodeSP layer, KisPostExecutionUndoAdapter *undoAdapter, const KUndo2MagicString &transactionText, int timedID)
 {
     Q_UNUSED(layer);
 
-    WriteLocker locker(this);
+    WriteLockerSP sharedWriteLock(new WriteLocker(this));
 
     KisPaintDeviceSP temporaryTarget = this->temporaryTarget();
     const bool isTemporaryTargetErasing = temporaryCompositeOp() == COMPOSITE_ERASE;
@@ -763,21 +778,33 @@ void KisColorizeMask::mergeToLayer(KisNodeSP layer, KisPostExecutionUndoAdapter 
         fakeUndoAdapter.addCommand(toQShared(cmd));
     }
 
+    QVector<KisRunnableStrokeJobData*> jobs;
+
     /**
      * When erasing, the brush affects all the key strokes, not only
      * the current one.
      */
     if (!isTemporaryTargetErasing) {
-        mergeToLayerImpl(m_d->currentKeyStrokeDevice, &fakeUndoAdapter, transactionText, timedID, false);
+        mergeToLayerImpl(m_d->currentKeyStrokeDevice, &fakeUndoAdapter, transactionText, timedID, false, sharedWriteLock, &jobs);
     } else {
         Q_FOREACH (const KeyStroke &stroke, m_d->keyStrokes) {
             if (temporaryExtent.intersects(stroke.dev->extent())) {
-                mergeToLayerImpl(stroke.dev, &fakeUndoAdapter, transactionText, timedID, false);
+                mergeToLayerImpl(stroke.dev, &fakeUndoAdapter, transactionText, timedID, false, sharedWriteLock, &jobs);
             }
         }
     }
 
-    mergeToLayerImpl(m_d->fakePaintDevice, &fakeUndoAdapter, transactionText, timedID, false);
+    mergeToLayerImpl(m_d->fakePaintDevice, &fakeUndoAdapter, transactionText, timedID, false, sharedWriteLock, &jobs);
+
+    /**
+     * When merging, we use barrier jobs only for ensuring that the merge jobs
+     * are not split by the update jobs. Merge jobs hold the shared lock, so
+     * forcinf them out of CPU will basically cause a deadlock. When running in
+     * the fake executor, the jobs cannot be split anyway, so there is no danger
+     * in that.
+     */
+    KisFakeRunnableStrokeJobsExecutor fakeExecutor(KisFakeRunnableStrokeJobsExecutor::AllowBarrierJobs);
+    fakeExecutor.addRunnableJobs(implicitCastList<KisRunnableStrokeJobDataBase*>(jobs));
 
     m_d->currentKeyStrokeDevice = 0;
     m_d->currentColor = KoColor();
@@ -807,23 +834,20 @@ void KisColorizeMask::mergeToLayer(KisNodeSP layer, KisPostExecutionUndoAdapter 
     undoAdapter->addMacro(macro);
 }
 
-void KisColorizeMask::writeMergeData(KisPainter *painter, KisPaintDeviceSP src)
+
+void KisColorizeMask::writeMergeData(KisPainter *painter, KisPaintDeviceSP src, const QRect &rc)
 {
     const KoColorSpace *alpha8 = KoColorSpaceRegistry::instance()->alpha8();
     const bool nonAlphaDst = !(*painter->device()->colorSpace() == *alpha8);
 
     if (nonAlphaDst) {
-        Q_FOREACH (const QRect &rc, src->region().rects()) {
-            painter->bitBlt(rc.topLeft(), src, rc);
-        }
+        painter->bitBlt(rc.topLeft(), src, rc);
     } else {
         KisCachedSelection::Guard s1(m_d->cachedSelection);
         KisPixelSelectionSP tempSelection = s1.selection()->pixelSelection();
 
-        Q_FOREACH (const QRect &rc, src->region().rects()) {
-            tempSelection->copyAlphaFrom(src, rc);
-            painter->bitBlt(rc.topLeft(), tempSelection, rc);
-        }
+        tempSelection->copyAlphaFrom(src, rc);
+        painter->bitBlt(rc.topLeft(), tempSelection, rc);
     }
 }
 

@@ -12,6 +12,7 @@
 #include "kis_single_action_shortcut.h"
 #include "KisInputActionGroup.h"
 #include <functional>
+#include "kis_shortcut_configuration.h"
 
 class QEvent;
 class QWheelEvent;
@@ -181,7 +182,9 @@ public:
      * right here i.e without a valid TouchEnd, so we should immediately stop
      * all running actions.
      */
-    void touchCancelEvent(const QPointF &localPos);
+    void touchCancelEvent(QTouchEvent *event, const QPointF &localPos);
+
+    void touchResetStateForPointerEvents();
 
 
     bool nativeGestureBeginEvent(QNativeGestureEvent *event);
@@ -228,6 +231,12 @@ public:
     void lostFocusEvent(const QPointF &localPos);
 
     /**
+     * Is called when a new tool has been activated. The method activates
+     * any tool's action if possible with the currently active modifiers.
+     */
+    void toolHasBeenActivated();
+
+    /**
      * Disables the start of any actions.
      *
      * WARNING: the actions that has been started before this call
@@ -260,6 +269,9 @@ private:
     void forceEndRunningShortcut(const QPointF &localPos);
     void forceDeactivateAllActions();
 
+    void setMaxTouchPointEvent(QTouchEvent *event);
+    void fireReadyTouchShortcut(QTouchEvent *event);
+    KisTouchShortcut *matchTouchShortcut(QTouchEvent *event);
     bool tryRunTouchShortcut(QTouchEvent *event);
     bool tryEndTouchShortcut(QTouchEvent *event);
 

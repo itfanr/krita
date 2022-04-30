@@ -17,6 +17,7 @@
 
 KisPressureSharpnessOption::KisPressureSharpnessOption()
     : KisCurveOption(KoID("Sharpness", i18n("Sharpness")), KisPaintOpOption::GENERAL, false)
+    , m_alignOutlinePixels(false)
     , m_softness(0)
 {
 }
@@ -24,12 +25,14 @@ KisPressureSharpnessOption::KisPressureSharpnessOption()
 void KisPressureSharpnessOption::writeOptionSetting(KisPropertiesConfigurationSP setting) const
 {
     KisCurveOption::writeOptionSetting(setting);
+    setting->setProperty(SHARPNESS_ALIGN_OUTLINE_PIXELS, m_alignOutlinePixels);
     setting->setProperty(SHARPNESS_SOFTNESS, m_softness);
 }
 
 void KisPressureSharpnessOption::readOptionSetting(const KisPropertiesConfigurationSP setting)
 {
     KisCurveOption::readOptionSetting(setting);
+    m_alignOutlinePixels = setting->getBool(SHARPNESS_ALIGN_OUTLINE_PIXELS);
     m_softness = quint32(setting->getInt(SHARPNESS_SOFTNESS));
 
     // backward compatibility: test for a "sharpness factor" property
@@ -43,12 +46,7 @@ void KisPressureSharpnessOption::readOptionSetting(const KisPropertiesConfigurat
 
 void KisPressureSharpnessOption::apply(const KisPaintInformation &info, const QPointF &pt, qint32 &x, qint32 &y, qreal &xFraction, qreal &yFraction) const
 {
-    if (!isChecked() || KisCurveOption::value() == 0.0) {
-        // brush
-        KisPaintOp::splitCoordinate(pt.x(), &x, &xFraction);
-        KisPaintOp::splitCoordinate(pt.y(), &y, &yFraction);
-    }
-    else {
+    if (isChecked() && alignOutlineToPixels() && KisCurveOption::value() != 0.0) {
         qreal processedSharpness = computeSizeLikeValue(info);
 
         if (processedSharpness == 1.0) {
@@ -69,6 +67,10 @@ void KisPressureSharpnessOption::apply(const KisPaintInformation &info, const QP
             KisPaintOp::splitCoordinate(xf, &x, &xFraction);
             KisPaintOp::splitCoordinate(yf, &y, &yFraction);
         }
+    } else {
+        // brush
+        KisPaintOp::splitCoordinate(pt.x(), &x, &xFraction);
+        KisPaintOp::splitCoordinate(pt.y(), &y, &yFraction);
     }
 }
 

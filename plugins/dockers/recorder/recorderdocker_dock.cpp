@@ -23,6 +23,7 @@
 #include <kactioncollection.h>
 #include <KisPart.h>
 #include <KisKineticScroller.h>
+#include "KisMainWindow.h"
 
 #include <QFileInfo>
 #include <QPointer>
@@ -40,7 +41,7 @@ class RecorderDockerDock::Private
 {
 public:
     RecorderDockerDock *const q;
-    Ui::RecorderDocker *const ui;
+    QScopedPointer<Ui::RecorderDocker> ui;
     QPointer<KisCanvas2> canvas;
     RecorderWriter writer;
 

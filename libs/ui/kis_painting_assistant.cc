@@ -125,17 +125,21 @@ struct KisPaintingAssistant::Private {
     struct SharedData {
         QString id;
         QString name;
-        bool isSnappingActive;
-        bool outlineVisible;
-        bool isLocal;
+        bool isSnappingActive {true};
+        bool outlineVisible {true};
+        bool isLocal {false};
 
-        KisCanvas2* m_canvas = 0;
+        KisCanvas2* m_canvas {nullptr};
 
         QPixmapCache::Key cached;
         QRect cachedRect; // relative to boundingRect().topLeft()
 
         struct TranslationInvariantTransform {
-            qreal m11, m12, m21, m22;
+            qreal m11 {0.0};
+            qreal m12 {0.0};
+            qreal m21 {0.0};
+            qreal m22 {0.0};
+
             TranslationInvariantTransform() { }
             TranslationInvariantTransform(const QTransform& t) : m11(t.m11()), m12(t.m12()), m21(t.m21()), m22(t.m22()) { }
             bool operator==(const TranslationInvariantTransform& b) {
@@ -145,8 +149,8 @@ struct KisPaintingAssistant::Private {
 
         QColor assistantGlobalColorCache = QColor(Qt::red);     // color to paint with if a custom color is not set
 
-        bool useCustomColor = false;
-        QColor assistantCustomColor = KisConfig(true).defaultAssistantsColor();
+        bool useCustomColor {false};
+        QColor assistantCustomColor {KisConfig(true).defaultAssistantsColor()};
     };
 
     QSharedPointer<SharedData> s;
@@ -752,6 +756,17 @@ void KisPaintingAssistant::findPerspectiveAssistantHandleLocation() {
          Setting the middle handles as needed
          */
         if(!d->bottomMiddle && !d->topMiddle && !d->leftMiddle && !d->rightMiddle) {
+  
+            // Before re-adding the handles, clear old ones that have been
+            // potentially loaded from disk and not re-associated with the
+            // xxxMiddle pointers in d; otherwise those would stay in place.
+            if(!d->sideHandles.isEmpty()) {
+                Q_FOREACH (KisPaintingAssistantHandleSP handle, d->sideHandles) {
+                    handle->unregisterAssistant(this);
+                }
+                d->sideHandles.clear();
+            }
+          
             d->bottomMiddle = new KisPaintingAssistantHandle((d->bottomLeft.data()->x() + d->bottomRight.data()->x())*0.5,
                                                              (d->bottomLeft.data()->y() + d->bottomRight.data()->y())*0.5);
             d->topMiddle = new KisPaintingAssistantHandle((d->topLeft.data()->x() + d->topRight.data()->x())*0.5,
@@ -760,10 +775,11 @@ void KisPaintingAssistant::findPerspectiveAssistantHandleLocation() {
                                                            (d->topRight.data()->y() + d->bottomRight.data()->y())*0.5);
             d->leftMiddle= new KisPaintingAssistantHandle((d->bottomLeft.data()->x() + d->topLeft.data()->x())*0.5,
                                                           (d->bottomLeft.data()->y() + d->topLeft.data()->y())*0.5);
-            addHandle(d->rightMiddle.data(), HandleType::SIDE);
-            addHandle(d->leftMiddle.data(), HandleType::SIDE);
-            addHandle(d->bottomMiddle.data(), HandleType::SIDE);
-            addHandle(d->topMiddle.data(), HandleType::SIDE);
+            
+            addHandle(d->rightMiddle, HandleType::SIDE);
+            addHandle(d->leftMiddle, HandleType::SIDE);
+            addHandle(d->bottomMiddle, HandleType::SIDE);
+            addHandle(d->topMiddle, HandleType::SIDE);
         }
         else
         {

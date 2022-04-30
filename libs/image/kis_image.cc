@@ -176,11 +176,6 @@ public:
 
     ~KisImagePrivate() {
         /**
-         * Stop animation interface. It may use the rootLayer.
-         */
-        delete animationInterface;
-
-        /**
          * First delete the nodes, while strokes
          * and undo are still alive
          */
@@ -188,17 +183,26 @@ public:
         KIS_SAFE_ASSERT_RECOVER_NOOP(rootLayer->graphListener() == q);
         KIS_SAFE_ASSERT_RECOVER_NOOP(rootLayer->image() == q);
 
+        /**
+         * Firstly we need to disconnect the nodes from the image,
+         * because some of the nodes (e.g. KisGroupLayer) may
+         * request the image back via defaultBouds() and/or
+         * animationInyterface()
+         */
+        if (rootLayer->image() == q) {
+            rootLayer->setImage(0);
+        }
+
         if (rootLayer->graphListener() == q) {
             rootLayer->setGraphListener(0);
         }
 
-        /// resetting of the image link is disabled in Krita 5.0, because it
-        /// may lead to unexpected bugs like bug 447126
-//        if (rootLayer->image() == q) {
-//            rootLayer->setImage(0);
-//        }
-
         rootLayer.clear();
+
+        /**
+         * Stop animation interface. It may use the rootLayer.
+         */
+        delete animationInterface;
     }
 
     KisImage *q;
@@ -368,7 +372,30 @@ void KisImage::copyFromImage(const KisImage &rhs)
 void KisImage::copyFromImageImpl(const KisImage &rhs, int policy)
 {
     // make sure we choose exactly one from REPLACE and CONSTRUCT
-    KIS_ASSERT_RECOVER_RETURN((policy & REPLACE) != (policy & CONSTRUCT));
+    KIS_ASSERT_RECOVER_RETURN(bool(policy & REPLACE) != bool(policy & CONSTRUCT));
+
+    /**
+     * We should replace the root before amitting any signals, because some of the layers
+     * may be subscribed to sigSizeChanged() signal (e.g. KisSelectionBasedLayer). So the
+     * old layers should be fully detached before we actually emit this signal.
+     *
+     * See bug 447599 for more details.
+     */
+
+    KisNodeSP oldRoot = this->root();
+    KisNodeSP newRoot = rhs.root()->clone();
+    newRoot->setGraphListener(this);
+    newRoot->setImage(this);
+
+    m_d->rootLayer = dynamic_cast<KisGroupLayer*>(newRoot.data());
+    setRoot(newRoot);
+
+    if (oldRoot) {
+        oldRoot->setImage(0);
+        oldRoot->setGraphListener(0);
+        oldRoot->disconnect();
+    }
+
 
     // only when replacing do we need to emit signals
 #define EMIT_IF_NEEDED if (!(policy & REPLACE)) {} else emit
@@ -404,12 +431,6 @@ void KisImage::copyFromImageImpl(const KisImage &rhs, int policy)
             m_d->proofingConfig = proofingConfig;
         }
     }
-
-    KisNodeSP newRoot = rhs.root()->clone();
-    newRoot->setGraphListener(this);
-    newRoot->setImage(this);
-    m_d->rootLayer = dynamic_cast<KisGroupLayer*>(newRoot.data());
-    setRoot(newRoot);
 
     bool exactCopy = policy & EXACT_COPY;
 
@@ -1523,6 +1544,19 @@ qint32 KisImage::nHiddenLayers() const
     return visitor.count();
 }
 
+qint32 KisImage::nChildLayers() const
+{
+    QStringList list;
+    list << "KisLayer";
+
+    KoProperties koProperties;
+    KisCountVisitor visitor(list, koProperties);
+    for (auto childNode : m_d->rootLayer->childNodes(list, koProperties)) {
+        childNode->accept(visitor);
+    }
+    return visitor.count();
+}
+
 void KisImage::flatten(KisNodeSP activeNode)
 {
     KisLayerUtils::flattenImage(this, activeNode);
@@ -1827,6 +1861,12 @@ bool KisImage::startIsolatedMode(KisNodeSP node, bool isolateLayer, bool isolate
     m_d->isolateGroup = isolateGroup;
     if ((isolateLayer || isolateGroup) == false) return false;
 
+    /**
+     * Isolation of trnsform masks is not possible, so we should
+     * not allow that
+     */
+    if (!node->projection()) return false;
+
     struct StartIsolatedModeStroke : public KisRunnableBasedStrokeStrategy {
         StartIsolatedModeStroke(KisNodeSP node, KisImageSP image, bool isolateLayer, bool isolateGroup)
             : KisRunnableBasedStrokeStrategy(QLatin1String("start-isolated-mode"),
@@ -2056,22 +2096,22 @@ void KisImage::initialRefreshGraph()
     waitForDone();
 }
 
-void KisImage::refreshGraphAsync(KisNodeSP root)
+void KisImage::refreshGraphAsync(KisNodeSP root, UpdateFlags flags)
 {
-    refreshGraphAsync(root, bounds(), bounds());
+    refreshGraphAsync(root, bounds(), bounds(), flags);
 }
 
-void KisImage::refreshGraphAsync(KisNodeSP root, const QRect &rc)
+void KisImage::refreshGraphAsync(KisNodeSP root, const QRect &rc, UpdateFlags flags)
 {
-    refreshGraphAsync(root, rc, bounds());
+    refreshGraphAsync(root, rc, bounds(), flags);
 }
 
-void KisImage::refreshGraphAsync(KisNodeSP root, const QRect &rc, const QRect &cropRect)
+void KisImage::refreshGraphAsync(KisNodeSP root, const QRect &rc, const QRect &cropRect, UpdateFlags flags)
 {
-    refreshGraphAsync(root, QVector<QRect>({rc}), cropRect);
+    refreshGraphAsync(root, QVector<QRect>({rc}), cropRect, flags);
 }
 
-void KisImage::refreshGraphAsync(KisNodeSP root, const QVector<QRect> &rects, const QRect &cropRect)
+void KisImage::refreshGraphAsync(KisNodeSP root, const QVector<QRect> &rects, const QRect &cropRect, UpdateFlags flags)
 {
     if (!root) root = m_d->rootLayer;
 
@@ -2085,14 +2125,18 @@ void KisImage::refreshGraphAsync(KisNodeSP root, const QVector<QRect> &rects, co
 
         KIS_SAFE_ASSERT_RECOVER(*it) { continue; }
 
-        if ((*it)->filterRefreshGraph(this, root.data(), rects, cropRect)) {
+        if ((*it)->filterRefreshGraph(this, root.data(), rects, cropRect, flags)) {
             return;
         }
     }
 
-
     m_d->animationInterface->notifyNodeChanged(root.data(), rects, true);
-    m_d->scheduler.fullRefreshAsync(root, rects, cropRect);
+
+    if (flags & NoFilthyUpdate) {
+        m_d->scheduler.fullRefreshAsyncNoFilthy(root, rects, cropRect);
+    } else {
+        m_d->scheduler.fullRefreshAsync(root, rects, cropRect);
+    }
 }
 
 

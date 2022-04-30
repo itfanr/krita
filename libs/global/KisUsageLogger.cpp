@@ -24,6 +24,14 @@
 #include <QStyle>
 #include <QStyleFactory>
 
+#ifdef Q_OS_WIN
+#include "KisWindowsPackageUtils.h"
+#endif
+
+#ifdef Q_OS_ANDROID
+#include <QtAndroidExtras/QtAndroid>
+#endif
+
 Q_GLOBAL_STATIC(KisUsageLogger, s_instance)
 
 const QString KisUsageLogger::s_sectionHeader("================================================================================\n");
@@ -43,7 +51,14 @@ KisUsageLogger::KisUsageLogger()
     d->logFile.setFileName(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/krita.log");
     d->sysInfoFile.setFileName(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/krita-sysinfo.log");
 
-    rotateLog();
+    QFileInfo fi(d->logFile.fileName());
+    if (fi.size() > 100 * 1000 * 1000) { // 100 mb seems a reasonable max
+        d->logFile.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        d->logFile.close();
+    }
+    else {
+        rotateLog();
+    }
 
     d->logFile.open(QFile::Append | QFile::Text);
     d->sysInfoFile.open(QFile::WriteOnly | QFile::Text);
@@ -73,6 +88,22 @@ QString KisUsageLogger::basicSystemInfo()
     // Krita version info
     systemInfo.append("Krita\n");
     systemInfo.append("\n Version: ").append(KritaVersionWrapper::versionString(true));
+#ifdef Q_OS_WIN
+    {
+        using namespace KisWindowsPackageUtils;
+        QString packageFamilyName;
+        QString packageFullName;
+        systemInfo.append("\n Installation type: ");
+        if (tryGetCurrentPackageFamilyName(&packageFamilyName) && tryGetCurrentPackageFullName(&packageFullName)) {
+            systemInfo.append("Store / MSIX package\n    Family Name: ")
+                .append(packageFamilyName)
+                .append("\n    Full Name: ")
+                .append(packageFullName);
+        } else {
+            systemInfo.append("installer / portable package");
+        }
+    }
+#endif
     systemInfo.append("\n Languages: ").append(KLocalizedString::languages().join(", "));
     systemInfo.append("\n Hidpi: ").append(QCoreApplication::testAttribute(Qt::AA_EnableHighDpiScaling) ? "true" : "false");
     systemInfo.append("\n\n");
@@ -92,7 +123,15 @@ QString KisUsageLogger::basicSystemInfo()
     systemInfo.append("\n  Pretty Productname: ").append(QSysInfo::prettyProductName());
     systemInfo.append("\n  Product Type: ").append(QSysInfo::productType());
     systemInfo.append("\n  Product Version: ").append(QSysInfo::productVersion());
-#ifdef Q_OS_LINUX
+
+#ifdef Q_OS_ANDROID
+    QString manufacturer =
+        QAndroidJniObject::getStaticObjectField("android/os/Build", "MANUFACTURER", "Ljava/lang/String;").toString();
+    const QString model =
+        QAndroidJniObject::getStaticObjectField("android/os/Build", "MODEL", "Ljava/lang/String;").toString();
+    manufacturer[0] = manufacturer[0].toUpper();
+    systemInfo.append("\n  Product Model: ").append(manufacturer + " " + model);
+#elif defined(Q_OS_LINUX)
     systemInfo.append("\n  Desktop: ").append(qgetenv("XDG_CURRENT_DESKTOP"));
 #endif
     systemInfo.append("\n\n");
@@ -199,6 +238,7 @@ QString KisUsageLogger::screenInformation()
 void KisUsageLogger::rotateLog()
 {
     if (d->logFile.exists()) {
+
         {
             // Check for CLOSING SESSION
             d->logFile.open(QFile::ReadOnly);

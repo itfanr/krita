@@ -74,15 +74,7 @@ KoResourceSP KoStopGradient::clone() const
 bool KoStopGradient::loadFromDevice(QIODevice *dev, KisResourcesInterfaceSP resourcesInterface)
 {
     Q_UNUSED(resourcesInterface);
-
-    QString strExt;
-    const int result = filename().lastIndexOf('.');
-    if (result >= 0) {
-        strExt = filename().mid(result).toLower();
-    }
-    QByteArray ba = dev->readAll();
-
-    QBuffer buf(&ba);
+    QBuffer buf(dev);
     loadSvgGradient(&buf);
     if (m_stops.count() >= 2) {
         setValid(true);
@@ -241,6 +233,11 @@ void KoStopGradient::setStops(QList< KoGradientStop > stops)
         if (stop.type != COLORSTOP) {
             m_hasVariableStops = true;
         }
+    }
+    if (m_stops.count() >= 2) {
+        setValid(true);
+    } else {
+        setValid(false);
     }
     updatePreview();
 }
@@ -536,6 +533,11 @@ void KoStopGradient::parseSvgGradient(const QDomElement& element, QHash<QString,
             m_stops.append(KoGradientStop(off, color, stopType));
         }
     }
+    if (m_stops.count() >= 2) {
+        setValid(true);
+    } else {
+        setValid(false);
+    }
 }
 
 QString KoStopGradient::defaultFileExtension() const
@@ -626,7 +628,7 @@ QString KoStopGradient::saveSvgGradient() const
 bool KoStopGradient::saveToDevice(QIODevice* dev) const
 {
     QTextStream stream(dev);
-
+    stream.setCodec("UTF-8");
     stream << saveSvgGradient();
 
     return true;

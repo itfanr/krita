@@ -22,30 +22,31 @@
 #include <QStylePainter>
 #include <QStyleOptionFrame>
 
+class KSqueezedTextLabel;
+
 class Q_DECL_HIDDEN KoDockWidgetTitleBar::Private
 {
 public:
     Private(KoDockWidgetTitleBar* thePublic)
-        : thePublic(thePublic),
-            lockable(true),
-            textVisibilityMode(KoDockWidgetTitleBar::FullTextAlwaysVisible),
-            locked(false)
+        : thePublic(thePublic)
+        , locked(false)
     {
     }
 
-    KoDockWidgetTitleBar* thePublic;
+    KoDockWidgetTitleBar* thePublic {nullptr};
     QIcon lockIcon, floatIcon, removeIcon; 
-    QAbstractButton* closeButton;
-    QAbstractButton* floatButton;
-    QAbstractButton* lockButton;
-    bool lockable;
-    KoDockWidgetTitleBar::TextVisibilityMode textVisibilityMode;
-    bool locked;
+    QAbstractButton* closeButton {nullptr};
+    QAbstractButton* floatButton {nullptr};
+    QAbstractButton* lockButton {nullptr};
+    KSqueezedTextLabel* titleLabel {nullptr};
+    bool locked {false};
     QDockWidget::DockWidgetFeatures features;
 
     void toggleFloating();
     void topLevelChanged(bool topLevel);
     void featuresChanged(QDockWidget::DockWidgetFeatures features);
+    void dockWidgetTitleChanged(const QString &title);
     void updateIcons();
+    void updateButtonSizes();
 };
 #endif

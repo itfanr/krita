@@ -54,9 +54,12 @@ struct CopyCompositor128 {
 
         const Vc::float_v zeroValue(0.0f);
         const Vc::float_v oneValue(1.0f);
+
+        const Vc::float_m opacity_is_null_mask = opacity_norm_vec == zeroValue;
+
         // The source cannot change the colors in the destination,
         // since its fully transparent
-        if ((opacity_norm_vec == zeroValue).isFull()) {
+        if (opacity_is_null_mask.isFull()) {
             // noop
         } else if ((opacity_norm_vec == oneValue).isFull()) {
             if ((src_alpha == zeroValue).isFull()) {
@@ -78,6 +81,8 @@ struct CopyCompositor128 {
             if ((newAlpha == zeroValue).isFull()) {
                 dataWrapper.clearPixels(dst);
             } else {
+                PixelStateRecoverHelper<channels_type, _impl> pixelRecoverHelper(dst_c1, dst_c2, dst_c3);
+
                 src_c1 *= src_alpha;
                 src_c2 *= src_alpha;
                 src_c3 *= src_alpha;
@@ -110,6 +115,14 @@ struct CopyCompositor128 {
                     dst_c2 = Vc::min(dst_c2, unitValue);
                     dst_c3 = Vc::min(dst_c3, unitValue);
                 }
+
+                /**
+                 * Roundtrip `dst * dst_alpha / newAlpha` may not be possible
+                 * (it happens when mask (and therefore opacity) is null). In
+                 * such case we should recover original value of the pixels to
+                 * be consistent with the scalar version of the algorithm.
+                 */
+                pixelRecoverHelper.recoverPixels(opacity_is_null_mask, dst_c1, dst_c2, dst_c3);
 
                 dataWrapper.write(dst, dst_c1, dst_c2, dst_c3, newAlpha);
             }
@@ -221,20 +234,16 @@ struct CopyCompositor128 {
                     dst_c3 = std::min(dst_c3, unitValue);
                 }
 
-                PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c1);
-                PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c2);
-                PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c3);
-
                 if (allChannelsFlag) {
-                    d[0] = dst_c1;
-                    d[1] = dst_c2;
-                    d[2] = dst_c3;
+                    d[0] = PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c1);
+                    d[1] = PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c2);
+                    d[2] = PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c3);
                 } else {
                     if (dstAlpha != 0.0f || alphaLocked) {
                         const QBitArray &channelFlags = oparams.channelFlags;
-                        if (channelFlags.at(0)) d[0] = dst_c1;
-                        if (channelFlags.at(1)) d[1] = dst_c2;
-                        if (channelFlags.at(2)) d[2] = dst_c3;
+                        if (channelFlags.at(0)) d[0] = PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c1);
+                        if (channelFlags.at(1)) d[1] = PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c2);
+                        if (channelFlags.at(2)) d[2] = PixelWrapper<channels_type, _impl>::roundFloatToUint(dst_c3);
                     } else {
                         // Precondition: dstAlpha == 0 && !alphaLocked
                         const QBitArray &channelFlags = oparams.channelFlags;

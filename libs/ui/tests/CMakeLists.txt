@@ -14,6 +14,7 @@ if (APPLE)
         kis_brush_hud_properties_config_test.cpp
         KisFrameSerializerTest.cpp
         KisRssReaderTest.cpp
+        KisSafeDocumentLoaderTest.cpp
 
         LINK_LIBRARIES kritaui Qt5::Test
         NAME_PREFIX "libs-ui-"
@@ -181,6 +182,7 @@ else (APPLE)
         kis_derived_resources_test.cpp
         kis_animation_frame_cache_test.cpp
         kis_shape_layer_test.cpp
+        KisSafeDocumentLoaderTest.cpp
 
         LINK_LIBRARIES kritaui Qt5::Test
         NAME_PREFIX "libs-ui-")
@@ -362,6 +364,7 @@ if (${INSTALL_BENCHMARKS})
     install(FILES data/testing_200px_colorsmudge_default_dulling_old_sa.kpp
         data/testing_200px_colorsmudge_defaut_dulling_new_nsa.kpp
         data/testing_200px_colorsmudge_defaut_dulling_new_sa.kpp
+        data/testing_800px_colorsmudge_defaut_dulling_new_sa.kpp
         data/testing_200px_colorsmudge_defaut_dulling_old_nsa.kpp
         data/testing_200px_colorsmudge_defaut_smearing_new_nsa.kpp
         data/testing_200px_colorsmudge_defaut_smearing_new_sa.kpp

@@ -114,6 +114,13 @@ bool KisShortcutConfiguration::unserialize(const QString &serialized)
         return false;
     }
 
+#ifndef Q_OS_MACOS
+    // only macOS platform handles these gestures
+    if (d->type == MacOSGestureType) {
+        return false;
+    }
+#endif
+
     //Third entry is the list of keys
     QString serializedKeys = parts.at(2);
     //Remove brackets
@@ -391,5 +398,44 @@ QString KisShortcutConfiguration::wheelInputToText(const QList<Qt::Key> &keys, K
     }
     else {
         return wheelText;
+    }
+}
+
+QString KisShortcutConfiguration::gestureToText(GestureAction action)
+{
+    switch (action) {
+#ifdef Q_OS_MACOS
+    case PinchGesture:
+        return i18n("Pinch Gesture");
+    case PanGesture:
+        return i18n("Pan Gesture");
+    case RotateGesture:
+        return i18n("Rotate Gesture");
+    case SmartZoomGesture:
+        return i18n("Smart Zoom Gesture");
+#else
+    case OneFingerTap:
+        return i18n("One Finger Tap");
+    case TwoFingerTap:
+        return i18n("Two Finger Tap");
+    case ThreeFingerTap:
+        return i18n("Three Finger Tap");
+    case FourFingerTap:
+        return i18n("Four Finger Tap");
+    case FiveFingerTap:
+        return i18n("Five Finger Tap");
+    case OneFingerDrag:
+        return i18n("One Finger Drag");
+    case TwoFingerDrag:
+        return i18n("Two Finger Drag");
+    case ThreeFingerDrag:
+        return i18n("Three Finger Drag");
+    case FourFingerDrag:
+        return i18n("Four Finger Drag");
+    case FiveFingerDrag:
+        return i18n("Five Finger Drag");
+#endif
+    default:
+        return i18n("No Gesture");
     }
 }
